@@ -27,6 +27,7 @@ the whole thing (see ``step`` / ``handle_event`` / ``process_pending``).
 
 from __future__ import annotations
 
+import json
 import logging
 import queue
 import random
@@ -47,7 +48,11 @@ from .menu import (
     PAIR_REMOTE,
     PAIR_SEARCH,
     PLAY_QUEUE,
+    POWER_CANCEL,
+    POWER_SHUTDOWN,
+    POWER_SLEEP,
     SHUFFLE_ALL,
+    SOUND_SYNC,
     SHUFFLE_SHOW,
     Choice,
     Menu,
@@ -121,6 +126,12 @@ class TVApp:
         # and run_from_config starts again on that port.
         self._hdmi_watcher = hdmi_watcher
         self.restart_requested = False
+
+        # Sound sync: the value saved from the menu wins over config.yaml.
+        self._settings_file = problem_directory(config.state_file) / "settings.json"
+        self.audio_delay_ms = self._load_audio_delay()
+        self._sound_sync = False
+        self._sound_sync_deadline = 0.0
         self._pairing_version = -1
 
         # Runtime state. ``volume`` / ``muted`` are the only Pi level. mpv is
@@ -239,6 +250,7 @@ class TVApp:
         """
         self._resolve_volume_mode()
         self._apply_output_volume()
+        self.player.set_audio_delay(self.audio_delay_ms / 1000.0)
         self.input.start()
         self._select_start_channel()
         if self.config.start_mode == "shuffle_all" and self._mix is not None:
@@ -285,6 +297,7 @@ class TVApp:
         self.overlay.tick()
         self._refresh_pairing_screen()
         self._maybe_close_idle_menu(now)
+        self._maybe_end_sound_sync(now)
         self._maybe_commit_switch(now)
         self._maybe_commit_digits(now)
         self._drain_playback_events()
@@ -327,11 +340,15 @@ class TVApp:
             self._running = False
             return
         if action == Action.POWER:
-            self._toggle_standby()
+            self._power_button()
             return
 
         # While in standby, ignore everything except POWER/QUIT (handled above).
         if self.standby:
+            return
+
+        if self._sound_sync:
+            self._handle_sound_sync_event(action)
             return
 
         if self.menu.is_open:
@@ -476,6 +493,88 @@ class TVApp:
             self.tune_current()
         elif choice.kind == PLAY_QUEUE and choice.paths:
             self.play_queue(list(choice.paths), choice.index)
+        elif choice.kind == POWER_SLEEP:
+            self._toggle_standby()
+        elif choice.kind == POWER_SHUTDOWN:
+            self._power_off("shut down from the power screen")
+        elif choice.kind == SOUND_SYNC:
+            self._start_sound_sync()
+        elif choice.kind == POWER_CANCEL:
+            pass  # the menu has closed; keep watching
+
+    # -- the power button -----------------------------------------------------
+    def _power_button(self) -> None:
+        """Asleep: wake up. Awake: ask whether to sleep or shut down. Pressed
+        again on that screen, it sleeps, so a double press still blanks the TV."""
+        if self.standby:
+            self._toggle_standby()
+            return
+        if self._sound_sync:
+            self._end_sound_sync()
+        if self.menu.is_open and self.menu.screen.kind == "power":
+            self.close_menu()
+            self._toggle_standby()
+            return
+        self._digit_buffer = ""
+        self.menu.open_power()
+        self._touch_menu()
+        self.overlay.show_menu(self.menu)
+
+    # -- sound sync -------------------------------------------------------------
+    _SYNC_STEP_MS = 50
+    _SYNC_LIMIT_MS = 2000
+    _SYNC_IDLE_SECONDS = 30.0
+
+    def _start_sound_sync(self) -> None:
+        """Adjust the sound while watching: the picture stays in view so the
+        voices can be lined up with the mouths."""
+        self._sound_sync = True
+        self._sound_sync_deadline = self._clock() + self._SYNC_IDLE_SECONDS
+        self.overlay.show_sound_sync(self.audio_delay_ms)
+
+    def _handle_sound_sync_event(self, action: Action) -> None:
+        self._sound_sync_deadline = self._clock() + self._SYNC_IDLE_SECONDS
+        later = (Action.VOLUME_UP, Action.FAST_FORWARD, Action.CHANNEL_UP)
+        earlier = (Action.VOLUME_DOWN, Action.REWIND, Action.CHANNEL_DOWN)
+        if action in later or action in earlier:
+            step = self._SYNC_STEP_MS if action in later else -self._SYNC_STEP_MS
+            limit = self._SYNC_LIMIT_MS
+            self.audio_delay_ms = max(-limit, min(limit, self.audio_delay_ms + step))
+            self.player.set_audio_delay(self.audio_delay_ms / 1000.0)
+            self.overlay.show_sound_sync(self.audio_delay_ms)
+        elif action in (Action.ENTER, Action.BACK, Action.MENU, Action.PLAY_PAUSE):
+            self._end_sound_sync()
+
+    def _maybe_end_sound_sync(self, now: float) -> None:
+        if self._sound_sync and now >= self._sound_sync_deadline:
+            self._end_sound_sync()
+
+    def _end_sound_sync(self) -> None:
+        self._sound_sync = False
+        self.overlay.clear_sound_sync()
+        self._save_audio_delay()
+
+    def _load_audio_delay(self) -> int:
+        try:
+            saved = json.loads(self._settings_file.read_text())
+            value = int(saved["audio_delay_ms"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return self.config.audio_delay_ms
+        return max(-self._SYNC_LIMIT_MS, min(self._SYNC_LIMIT_MS, value))
+
+    def _save_audio_delay(self) -> None:
+        try:
+            try:
+                settings = json.loads(self._settings_file.read_text())
+                if not isinstance(settings, dict):
+                    settings = {}
+            except (OSError, ValueError):
+                settings = {}
+            settings["audio_delay_ms"] = self.audio_delay_ms
+            self._settings_file.parent.mkdir(parents=True, exist_ok=True)
+            self._settings_file.write_text(json.dumps(settings, indent=2) + "\n")
+        except OSError:
+            log.exception("could not save the sound sync setting")
 
     def _enter(self) -> None:
         """OK confirms a typed channel number, and otherwise opens the menu."""
@@ -740,9 +839,9 @@ class TVApp:
         log.warning("HDMI-CEC %s was not sent; Pi volume left at %s", command, self.volume)
         self.overlay.show_message("NO TV VOLUME")
 
-    def _power_off(self) -> None:
+    def _power_off(self, reason: str = "volume floor") -> None:
         """Cleanly shut the Pi down so it's safe to unplug."""
-        log.info("powering off (volume floor)")
+        log.info("powering off (%s)", reason)
         self.powered_off = True
         self._switch_deadline = None
         self._pending_banner = None

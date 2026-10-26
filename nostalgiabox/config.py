@@ -142,6 +142,9 @@ class Config:
     # How far fast-forward and rewind jump, in seconds.
     seek_forward_seconds: float = 30.0
     seek_back_seconds: float = 10.0
+    # Sound sync, in milliseconds: positive plays the sound later, negative
+    # earlier. Changing it from the menu saves the new value and wins over this.
+    audio_delay_ms: int = 0
 
     # Presentation / "feel" of the TV.
     # Start each episode a random number of seconds in (between min and max), so
@@ -547,6 +550,7 @@ def config_from_dict(data: Dict[str, Any], *, base_dir: Optional[Path] = None) -
         seek_back_seconds=_clamp_float(
             data.get("seek_back_seconds", 10.0), 1.0, 600.0, "seek_back_seconds"
         ),
+        audio_delay_ms=_clamp_int(data.get("audio_delay_ms", 0), -2000, 2000, "audio_delay_ms"),
         start_offset_min=_offset_range(data)[0],
         start_offset_max=_offset_range(data)[1],
         transition_effect=_valid_transition(data.get("transition", "none")),

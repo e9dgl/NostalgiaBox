@@ -89,6 +89,9 @@ class Player(ABC):
         """Pause or carry on with the current episode."""
         raise NotImplementedError
 
+    def set_audio_delay(self, seconds: float) -> None:
+        """Play the sound this much later (negative: earlier) than the picture."""
+
     def playback_sample(self) -> PlaybackSample:
         """Clock, pause, and frame identity for the stall watchdog.
 
@@ -383,6 +386,13 @@ class MpvPlayer(Player):
         except Exception:  # noqa: BLE001
             log.exception("could not %s", "pause" if paused else "resume")
 
+    def set_audio_delay(self, seconds: float) -> None:  # pragma: no cover - needs libmpv
+        try:
+            # A global option: it carries over to every file that follows.
+            self._mpv.audio_delay = float(seconds)
+        except Exception:  # noqa: BLE001
+            log.exception("could not set the sound delay to %.3fs", seconds)
+
     def playback_sample(self) -> PlaybackSample:  # pragma: no cover - needs libmpv
         try:
             raw_pos = self._mpv.time_pos
@@ -500,6 +510,7 @@ class MockPlayer(Player):
         # Knobs the stall watchdog reads. Tests move ``time_pos`` by hand;
         # playback does not advance on its own.
         self.paused = False
+        self.audio_delay = 0.0
         self.idle = False
         self.ended = False
         self.fail_sample = False
@@ -583,6 +594,10 @@ class MockPlayer(Player):
     def set_pause(self, paused: bool) -> None:
         self.paused = bool(paused)
         self._log("PAUSE" if paused else "RESUME")
+
+    def set_audio_delay(self, seconds: float) -> None:
+        self.audio_delay = float(seconds)
+        self._log(f"AUDIO DELAY {seconds:+.3f}s")
 
     def playback_sample(self) -> PlaybackSample:
         if self.fail_sample:

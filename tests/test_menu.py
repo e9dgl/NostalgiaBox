@@ -102,7 +102,9 @@ def test_top_level_is_shuffle_then_shows(tmp_path):
     menu = _menu(tmp_path)
     menu.open()
     labels = [i.label for i in menu.screen.items]
-    assert labels == ["Shuffle everything", "Arthur", "Pingu", "The Raccoons", "Pair a remote"]
+    assert labels == [
+        "Shuffle everything", "Arthur", "Pingu", "The Raccoons", "Sound sync", "Pair a remote"
+    ]
     assert menu.select().kind == SHUFFLE_ALL
 
 
@@ -329,6 +331,7 @@ def test_standby_resumes_a_queued_episode(tmp_path):
     app.play_queue([tmp_path / "Pingu/Pingu 01.mp4", tmp_path / "Pingu/Pingu 02.mp4"], 1)
     player.time_pos = 42.0
     send(app, Action.POWER)
+    send(app, Action.POWER)  # power screen, then sleep
     send(app, Action.POWER)
     assert app.mode == "queue"
     assert (player.current, player.time_pos) == (tmp_path / "Pingu/Pingu 02.mp4", 42.0)

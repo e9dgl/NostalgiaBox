@@ -9,7 +9,9 @@ Three levels, all driven by Up / Down / OK / Back on the remote:
 
 Choosing an episode plays it and carries on through the rest of the show in
 order. The last line of the top level, **Pair a remote**, opens a screen the
-app fills in as Bluetooth devices are found. The menu itself is pure state: :meth:`Menu.select` returns a
+app fills in as Bluetooth devices are found, and **Sound sync** above it lines the sound up with
+the picture. The power button opens a separate "Turn off" screen
+(:meth:`Menu.open_power`). The menu itself is pure state: :meth:`Menu.select` returns a
 :class:`Choice` and the app decides how to play it. Drawing lives in
 ``overlay.py``.
 """
@@ -29,6 +31,10 @@ PLAY_QUEUE = "play_queue"      # paths[index], then onward in order
 PAIR_REMOTE = "pair_remote"    # open the Bluetooth pairing screen
 PAIR_SEARCH = "pair_search"    # search for remotes again
 PAIR_DEVICE = "pair_device"    # pair the device whose address is ``value``
+SOUND_SYNC = "sound_sync"      # line the voices up with the mouths
+POWER_SLEEP = "power_sleep"    # blank the screen; Power wakes it
+POWER_SHUTDOWN = "power_shutdown"  # shut the Pi down (after "are you sure?")
+POWER_CANCEL = "power_cancel"  # close the power screen and keep watching
 
 
 @dataclass(frozen=True)
@@ -94,6 +100,32 @@ class Menu:
     def close(self) -> None:
         self._stack = []
 
+    def open_power(self) -> None:
+        """The power button's screen: sleep, or shut down (with a second
+        "are you sure?" screen), or carry on watching."""
+        confirm = Screen(
+            "Shut down the box?",
+            [
+                MenuItem("No, keep watching", choice=Choice(POWER_CANCEL)),
+                MenuItem("Yes, shut down", choice=Choice(POWER_SHUTDOWN)),
+            ],
+            breadcrumb="Turn off",
+            note="Unplug it once the green light stops flashing.",
+            kind="power",
+        )
+        self._stack = [
+            Screen(
+                "Turn off",
+                [
+                    MenuItem("Sleep", choice=Choice(POWER_SLEEP), detail="screen off"),
+                    MenuItem("Shut down", opens=confirm, detail="safe to unplug"),
+                    MenuItem("Keep watching", choice=Choice(POWER_CANCEL)),
+                ],
+                note="Sleep turns the picture off. Press Power to wake it up.",
+                kind="power",
+            )
+        ]
+
     # -- navigation ---------------------------------------------------------
     def move(self, step: int) -> None:
         if not self.is_open or not self.screen.items:
@@ -154,6 +186,7 @@ class Menu:
                     detail=_count(count, "episode"),
                 )
             )
+        items.append(MenuItem("Sound sync", choice=Choice(SOUND_SYNC)))
         items.append(MenuItem("Pair a remote", choice=Choice(PAIR_REMOTE)))
         return Screen("What do you want to watch?", items)
 
@@ -208,4 +241,8 @@ __all__ = [
     "PAIR_REMOTE",
     "PAIR_SEARCH",
     "PAIR_DEVICE",
+    "SOUND_SYNC",
+    "POWER_SLEEP",
+    "POWER_SHUTDOWN",
+    "POWER_CANCEL",
 ]

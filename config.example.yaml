@@ -89,6 +89,13 @@ menu_timeout: 60
 seek_forward_seconds: 30
 seek_back_seconds: 10
 
+# --- Sound sync ----------------------------------------------------------------
+# If voices are out of step with mouths, move the sound in milliseconds:
+# positive plays it later, negative earlier (-2000 to 2000). Easier: Menu ->
+# Sound sync, then left/right while watching. The value saved there (in
+# settings.json beside the state file) wins over this one.
+audio_delay_ms: 0
+
 # --- The "feel" of the TV ----------------------------------------------------
 # Every show keeps its own shape: 4:3 shows get black bars at the sides, 16:9
 # shows fill the screen.

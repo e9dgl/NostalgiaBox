@@ -166,7 +166,9 @@ def test_episode_advances_on_end(tmp_path):
 def test_standby_blanks_and_ignores_input(tmp_path):
     app, player, _ = build_app(tmp_path)
     app.start()
-    send(app, Action.POWER)
+    send(app, Action.POWER)  # asks: sleep or shut down?
+    assert app.menu.is_open and not app.standby
+    send(app, Action.POWER)  # a second press sleeps
     assert app.standby
     assert player.current is None  # screen blanked
     assert 3 in player.overlays  # standby overlay
@@ -389,6 +391,7 @@ def test_standby_does_not_look_like_a_freeze(tmp_path):
     )
     app.start()
     send(app, Action.POWER)
+    send(app, Action.POWER)  # power screen, then sleep
     clock.advance(30)
     app.step()
     assert player.seeks == []

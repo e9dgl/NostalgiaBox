@@ -54,6 +54,7 @@ _ID_MESSAGE = 4
 _ID_MENU = 5
 _ID_NOW_PLAYING = 6
 _ID_PAUSE = 7
+_ID_SOUND_SYNC = 8
 
 # How many menu rows fit on screen at once.
 MENU_ROWS = 5
@@ -137,6 +138,16 @@ class OverlayManager:
         self._player.clear_overlay(_ID_PAUSE)
         self._expiry.pop(_ID_PAUSE, None)
 
+    def show_sound_sync(self, delay_ms: int) -> None:
+        self._player.set_overlay(
+            _ID_SOUND_SYNC, _sound_sync_ass(delay_ms, self._ui), CANVAS_W, CANVAS_H
+        )
+        self._expiry.pop(_ID_SOUND_SYNC, None)
+
+    def clear_sound_sync(self) -> None:
+        self._player.clear_overlay(_ID_SOUND_SYNC)
+        self._expiry.pop(_ID_SOUND_SYNC, None)
+
     def show_standby(self) -> None:
         """Persistent 'standby' notice for when the box is 'off'."""
         ass = _standby_ass(self._ui)
@@ -158,7 +169,7 @@ class OverlayManager:
     def clear_all(self) -> None:
         for overlay_id in (
             _ID_CHANNEL, _ID_VOLUME, _ID_STANDBY, _ID_MESSAGE, _ID_MENU, _ID_NOW_PLAYING,
-            _ID_PAUSE,
+            _ID_PAUSE, _ID_SOUND_SYNC,
         ):
             self._player.clear_overlay(overlay_id)
         self._expiry.clear()
@@ -318,6 +329,29 @@ def _pause_ass(show: str, code: str, episode: str, ui: UiConfig) -> str:
         rf"Press PLAY or OK to carry on"
     )
     return "\n".join(parts)
+
+
+def sound_sync_words(delay_ms: int) -> str:
+    """``In sync``, ``Sound 150 ms later``, ``Sound 100 ms earlier``."""
+    if delay_ms == 0:
+        return "In sync"
+    return f"Sound {abs(delay_ms)} ms {'later' if delay_ms > 0 else 'earlier'}"
+
+
+def _sound_sync_ass(delay_ms: int, ui: UiConfig) -> str:
+    """A bar along the bottom, so a face on screen stays in view."""
+    x, w, h = _IX0, _IX1 - _IX0, 150
+    top = _IY1 - h
+    cx = x + w // 2
+    return "\n".join([
+        _rounded_rect(x=x, y=top, w=w, h=h, r=28, fill=ui.menu_background),
+        rf"{{\an8\pos({cx},{top + 14}){_text(ui, size=34, color=_SOFT)}}}"
+        r"Sound sync: watch someone talking",
+        rf"{{\an8\pos({cx},{top + 52}){_text(ui, size=52, color=ui.menu_accent)}}}"
+        rf"<   {_escape(sound_sync_words(delay_ms))}   >",
+        rf"{{\an2\pos({cx},{top + h - 10}){_text(ui, size=30, color=_WHITE)}}}"
+        r"LEFT = sound earlier      RIGHT = sound later      OK = done",
+    ])
 
 
 def _pause_icon(cx: int, cy: int, fill: str) -> str:

@@ -466,8 +466,11 @@ Turn it back on by plugging the power in. It boots to a channel by itself.
 
 **When the remote's volume keys control the TV** (the usual case; see
 [Volume](#volume)), those keys cannot shut the Pi down, because they never
-move the Pi's volume. The power button blanks the screen (standby). To shut
-all the way down so it is safe to unplug, SSH in and run `sudo poweroff`.
+move the Pi's volume. Use the power button instead: it asks **Sleep** (blank
+the screen; Power wakes it) or **Shut down**. Shut down asks "are you sure?"
+first, with **No** highlighted, then shuts the Pi down so it is safe to
+unplug once the green light stops flashing. Pressing Power twice quickly
+still just sleeps.
 
 **Read-only SD card (optional, stronger).** On the Pi:
 
@@ -494,8 +497,9 @@ it again.
 | Change channels | Channel up / down |
 | Adjust volume | Volume up / down (the TV, when HDMI-CEC works) |
 | Mute | Mute |
-| Standby (blank screen) | Power |
-| **Turn off** (safe to unplug) | Volume-down again at 0, **only** when the Pi is doing volume. Otherwise `sudo poweroff` over SSH |
+| Sleep (blank screen) | **Power**, then **Sleep** (or press Power twice). Power again wakes it |
+| **Turn off** (safe to unplug) | **Power**, then **Shut down**, then **Yes, shut down** |
+| Voices out of step with mouths | Menu → **Sound sync**. Left / right move the sound earlier / later in 50 ms steps while the show plays; OK saves it |
 
 New episodes: add files to that show's folder (on the USB drive, or under
 `/media/nostalgiabox/NAME OF SHOW/`). The TV picks them up the next time that
@@ -899,6 +903,7 @@ start_mode: shuffle_all      # shuffle_all | channel   (what plays at power-on)
 menu_timeout: 60             # seconds before an untouched menu closes; 0 = never
 seek_forward_seconds: 30     # fast-forward jump
 seek_back_seconds: 10        # rewind jump
+audio_delay_ms: 0            # sound sync; + = sound later. Menu → Sound sync saves over this
 hwdec: auto-safe             # try v4l2m2m-copy on a Pi 3 if H.264 stutters
 tune_in: random              # random | resume | broadcast
 order: shuffle               # shuffle | in_order   (shuffle: false = in_order)
