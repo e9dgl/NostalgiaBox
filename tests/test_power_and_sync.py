@@ -139,3 +139,60 @@ def test_sound_sync_closes_by_itself(tmp_path):
     assert 8 not in player.overlays
     send(app, Action.VOLUME_UP)
     assert player.audio_delay == 0.0  # back to normal volume keys
+
+
+# -- the power screen pauses the show ------------------------------------------
+def test_power_screen_pauses_and_keep_watching_carries_on(tmp_path):
+    app, player, _ = _app(tmp_path)
+    app.start()
+    send(app, Action.POWER)
+    assert player.paused and app.paused
+    assert 7 not in player.overlays  # the power screen, not the pause card
+    send(app, Action.CHANNEL_UP)  # "Keep watching"
+    send(app, Action.ENTER)
+    assert not player.paused and not app.paused
+    assert app._stall.path is not None
+
+
+def test_backing_out_of_the_power_screen_carries_on(tmp_path):
+    app, player, _ = _app(tmp_path)
+    app.start()
+    send(app, Action.POWER)
+    send(app, Action.CHANNEL_DOWN)
+    send(app, Action.ENTER)
+    send(app, Action.ENTER)  # "No, keep watching"
+    assert not player.paused
+    send(app, Action.POWER)
+    send(app, Action.BACK)
+    assert not app.menu.is_open and not player.paused
+
+
+def test_power_screen_times_out_and_carries_on(tmp_path):
+    app, player, clock = _app(tmp_path)
+    app.start()
+    send(app, Action.POWER)
+    clock.advance(61)
+    app.step()
+    assert not app.menu.is_open and not player.paused
+
+
+def test_already_paused_stays_paused(tmp_path):
+    app, player, _ = _app(tmp_path)
+    app.start()
+    send(app, Action.PLAY_PAUSE)
+    send(app, Action.POWER)
+    send(app, Action.BACK)
+    assert player.paused and 7 in player.overlays
+
+
+def test_sleep_from_the_power_screen_does_not_unpause_first(tmp_path):
+    app, player, _ = _app(tmp_path)
+    app.start()
+    send(app, Action.POWER)
+    resumes = []
+    real = player.set_pause
+    player.set_pause = lambda p: (resumes.append(p), real(p))
+    send(app, Action.ENTER)  # Sleep
+    assert app.standby and False not in resumes
+    send(app, Action.POWER)
+    assert not app.standby and not app.paused

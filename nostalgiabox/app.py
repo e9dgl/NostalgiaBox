@@ -132,6 +132,9 @@ class TVApp:
         self.audio_delay_ms = self._load_audio_delay()
         self._sound_sync = False
         self._sound_sync_deadline = 0.0
+        # True while the power screen holds a pause it started itself, so
+        # leaving that screen carries on (and a pause the viewer chose stays).
+        self._power_paused = False
         self._pairing_version = -1
 
         # Runtime state. ``volume`` / ``muted`` are the only Pi level. mpv is
@@ -397,7 +400,14 @@ class TVApp:
     def close_menu(self) -> None:
         self.menu.close()
         self.overlay.clear_menu()
-        if self.paused:
+        if self._power_paused:
+            # Leaving the power screen: carry on from where it stopped.
+            self._power_paused = False
+            if self.paused:
+                self.paused = False
+                self.player.set_pause(False)
+                self._arm_stall(self._playing_path)
+        elif self.paused:
             self._show_pause_card()
 
     def _handle_menu_event(self, event: InputEvent) -> None:
@@ -413,6 +423,9 @@ class TVApp:
             if choice is not None and choice.kind in (PAIR_REMOTE, PAIR_SEARCH, PAIR_DEVICE):
                 self._pairing_choice(choice)
             elif choice is not None:
+                if choice.kind in (POWER_SLEEP, POWER_SHUTDOWN):
+                    # Going to sleep or off: no point un-pausing first.
+                    self._power_paused = False
                 self.close_menu()
                 self._play_choice(choice)
                 return
@@ -432,7 +445,8 @@ class TVApp:
         if self.menu.is_open:
             self.overlay.show_menu(self.menu)
         else:
-            self.overlay.clear_menu()
+            # Backed out of the top level.
+            self.close_menu()
 
     def _touch_menu(self) -> None:
         self._menu_deadline = self._clock() + self.config.menu_timeout
@@ -512,10 +526,17 @@ class TVApp:
         if self._sound_sync:
             self._end_sound_sync()
         if self.menu.is_open and self.menu.screen.kind == "power":
+            self._power_paused = False
             self.close_menu()
             self._toggle_standby()
             return
         self._digit_buffer = ""
+        # The show waits while the viewer decides.
+        if not self.paused and self._playing_path is not None and self._switch_deadline is None:
+            self.paused = True
+            self.player.set_pause(True)
+            self._stall.disarm()
+            self._power_paused = True
         self.menu.open_power()
         self._touch_menu()
         self.overlay.show_menu(self.menu)

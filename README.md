@@ -467,7 +467,8 @@ Turn it back on by plugging the power in. It boots to a channel by itself.
 **When the remote's volume keys control the TV** (the usual case; see
 [Volume](#volume)), those keys cannot shut the Pi down, because they never
 move the Pi's volume. Use the power button instead: it asks **Sleep** (blank
-the screen; Power wakes it) or **Shut down**. Shut down asks "are you sure?"
+the screen; Power wakes it) or **Shut down**, and pauses the show while it
+asks. Shut down asks "are you sure?"
 first, with **No** highlighted, then shuts the Pi down so it is safe to
 unplug once the green light stops flashing. Pressing Power twice quickly
 still just sleeps.
