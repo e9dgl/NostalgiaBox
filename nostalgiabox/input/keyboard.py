@@ -5,12 +5,18 @@ LIRC's uinput) show up to Linux as ordinary keyboard-like input devices. This
 backend reads their key-down events straight from ``/dev/input/event*`` using
 the ``evdev`` package - no X server or desktop required, which is exactly what
 we want on a headless Pi wired to a TV.
+
+Bluetooth remotes come and go: they connect a while after boot, and they drop
+off to save battery and reconnect on the next press, each time as a new
+``/dev/input/event*``. So the backend looks for new devices every couple of
+seconds rather than only once at start-up.
 """
 
 from __future__ import annotations
 
 import logging
 import select
+import time
 from typing import Dict, List, Optional, Sequence
 
 from ..actions import Action, InputEvent
@@ -29,6 +35,9 @@ _KEY_REPEAT = 2
 # autorepeat. Treating those as more presses is why one tap kept raising the
 # sound after the on-screen bar had gone.
 _REPEAT_ACTIONS = frozenset({Action.CHANNEL_UP, Action.CHANNEL_DOWN})
+
+# How often to look for a remote that has just connected (Bluetooth).
+_RESCAN_SECONDS = 2.0
 
 
 def key_event_should_emit(value: int, action: Action, *, allow_repeat: bool) -> bool:
@@ -83,13 +92,16 @@ class KeyboardBackend(InputBackend):
             return False
         return True
 
-    def _open_devices(self):
+    def _open_devices(self, skip: Sequence[str] = ()):
+        """Open every usable input device not already open (paths in ``skip``)."""
         import evdev
         from evdev import ecodes
 
         paths = self._device_paths or evdev.list_devices()
         devices = []
         for path in paths:
+            if path in skip:
+                continue
             try:
                 dev = evdev.InputDevice(path)
             except (OSError, PermissionError) as exc:
@@ -117,17 +129,19 @@ class KeyboardBackend(InputBackend):
             return
         self._devices = self._open_devices()
         if not self._devices:
-            log.warning("no usable input devices found for the keyboard backend")
-            return
+            log.warning("no input devices yet; waiting for a remote to connect")
 
         from evdev import ecodes
 
-        fd_to_device = {dev.fd: dev for dev in self._devices}
+        next_scan = time.monotonic() + _RESCAN_SECONDS
         while not self.stopping:
+            fd_to_device = {dev.fd: dev for dev in self._devices}
             try:
-                r, _, _ = select.select(fd_to_device, [], [], 0.5)
+                r, _, _ = select.select(list(fd_to_device), [], [], 0.5)
             except (OSError, ValueError):
-                break
+                # A device vanished between listing and select: drop dead ones.
+                self._devices = [d for d in self._devices if _is_open(d)]
+                continue
             for fd in r:
                 dev = fd_to_device.get(fd)
                 if dev is None:
@@ -138,8 +152,21 @@ class KeyboardBackend(InputBackend):
                             continue
                         self._handle_key_event(event)
                 except OSError:
-                    log.warning("input device %s disappeared", getattr(dev, "path", "?"))
-                    fd_to_device.pop(fd, None)
+                    log.info("input device went away: %s", getattr(dev, "name", "?"))
+                    self._drop(dev)
+            if time.monotonic() >= next_scan:
+                next_scan = time.monotonic() + _RESCAN_SECONDS
+                self._devices.extend(
+                    self._open_devices(skip=[d.path for d in self._devices])
+                )
+
+    def _drop(self, dev) -> None:
+        """Forget a device that disconnected (a Bluetooth remote going to sleep)."""
+        try:
+            dev.close()
+        except OSError:
+            pass
+        self._devices = [d for d in self._devices if d is not dev]
 
     def _handle_key_event(self, event) -> None:
         from evdev import ecodes
@@ -150,10 +177,13 @@ class KeyboardBackend(InputBackend):
         if event.value == _KEY_UP:
             return
 
-        key_name = _code_to_name(ecodes.KEY, event.code)
-        if key_name is None:
-            return
-        input_event = self._lookup(key_name)
+        input_event = None
+        # One code can have several names (113 is both KEY_MIN_INTERESTING and
+        # KEY_MUTE), so try each until one means something.
+        for key_name in _code_to_names(ecodes.KEY, event.code):
+            input_event = self._lookup(key_name)
+            if input_event is not None:
+                break
         if input_event is None:
             return
         if not key_event_should_emit(
@@ -176,14 +206,21 @@ class KeyboardBackend(InputBackend):
         self._devices = []
 
 
-def _code_to_name(key_table, code: int) -> Optional[str]:
+def _is_open(dev) -> bool:
+    try:
+        return dev.fd >= 0
+    except (OSError, ValueError):
+        return False
+
+
+def _code_to_names(key_table, code: int) -> List[str]:
     """evdev's KEY table maps a code to a name or a list of aliases."""
     name = key_table.get(code)
     if name is None:
-        return None
+        return []
     if isinstance(name, (list, tuple)):
-        return name[0] if name else None
-    return name
+        return list(name)
+    return [name]
 
 
 __all__ = ["KeyboardBackend", "key_event_should_emit"]

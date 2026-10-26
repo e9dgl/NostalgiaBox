@@ -391,6 +391,34 @@ setup. To use different keys later, see `key_overrides` in
 [`config.example.yaml`](config.example.yaml). Find a button's Linux name with
 `sudo evtest` on the Pi.
 
+### Or use a Bluetooth remote instead of the Flirc
+
+A Bluetooth TV remote or "air mouse" (one that pairs as a keyboard, often
+named something like `HID Remote01`) works without the Flirc and leaves the
+USB port free. On the Pi:
+
+```bash
+bluetoothctl
+```
+
+At the `[bluetooth]#` prompt, type `power on`, `agent on`, `default-agent`,
+then `scan on`. Put the remote in pairing mode. When a line like
+`[NEW] Device AA:BB:CC:11:22:33 HID Remote01` appears, type (with your
+remote's code):
+
+```text
+pair AA:BB:CC:11:22:33
+trust AA:BB:CC:11:22:33
+connect AA:BB:CC:11:22:33
+quit
+```
+
+`trust` makes it reconnect by itself after a reboot or after it sleeps.
+NostalgiaBox notices a remote that connects at any time. Reboot once after
+installing (`sudo reboot`) so the remote's power button blanks the screen
+instead of shutting the Pi down. Back opens the menu, Home opens or closes it,
+OK chooses, up/down move, and the volume keys change the volume.
+
 ---
 
 ## 9. Send the sound to the TV
