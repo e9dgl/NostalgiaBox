@@ -142,9 +142,11 @@ def test_ui_and_playback_defaults(tmp_path):
     assert cfg.initial_volume == 100
     assert cfg.volume_control == "auto"
     assert cfg.order == "shuffle"
-    assert cfg.ui.font == "VT323"
-    assert cfg.ui.color == "#4DFF5A"
-    assert cfg.ui.menu_accent == "#E50914"
+    assert cfg.ui.font == "Fredoka SemiBold"
+    assert cfg.ui.color == "#FFD23F"
+    assert cfg.ui.glow is False
+    assert cfg.ui.menu_accent == "#FFD23F"
+    assert cfg.ui.menu_background == "#16205A"
     assert cfg.start_mode == "shuffle_all"   # power on into "shuffle everything"
     assert cfg.menu_timeout == 60.0
     assert cfg.hwdec == "auto-safe"

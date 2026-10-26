@@ -130,7 +130,7 @@ sudo ln -sfn "${REPO_DIR}/.venv/bin/nostalgiabox" /usr/local/bin/nostalgiabox
 echo "==> Generating the static and colour-bar clips"
 python -m nostalgiabox.static_gen || echo "    (clip generation failed; the TV still works without them)"
 
-echo "==> Installing the retro on-screen font (VT323)"
+echo "==> Installing the on-screen fonts (Fredoka, VT323)"
 mkdir -p "${HOME}/.local/share/fonts" "${HOME}/.config/mpv/fonts"
 if compgen -G "${REPO_DIR}/nostalgiabox/assets/fonts/*.ttf" > /dev/null; then
   cp "${REPO_DIR}"/nostalgiabox/assets/fonts/*.ttf "${HOME}/.local/share/fonts/" || true

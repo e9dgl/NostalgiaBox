@@ -105,12 +105,17 @@ channel_bug_seconds: 4    # how long the channel banner lingers
 osd_duration: 2           # how long the volume bar / messages linger
 
 # --- On-screen display look (the green digital readouts) ---------------------
+# The defaults are built for young children: a big rounded font, and yellow and
+# white on deep blue for strong contrast. For the old green terminal look, use
+# font: "VT323", color: "#4DFF5A", glow: true.
 ui:
-  font: "VT323"           # bundled retro terminal font (installed by install.sh)
-  color: "#4DFF5A"        # phosphor green for CH banner, volume bar, messages
-  dim_color: "#123B18"    # (reserved) colour for unlit elements
-  glow: true              # soft glow around the green text
-  menu_accent: "#E50914"  # the bar behind the highlighted menu row
+  font: "Fredoka SemiBold"     # bundled rounded font (installed by install.sh)
+  color: "#FFD23F"             # CH banner, volume bar, messages
+  dim_color: "#123B18"         # (reserved) colour for unlit elements
+  glow: false                  # false = thick dark outline (easier to read)
+  menu_accent: "#FFD23F"       # the highlighted menu tile
+  menu_background: "#16205A"   # the menu board, and text outlines
+  menu_tile: "#2B3A8C"         # the other menu tiles
 
 # --- Video decoding ----------------------------------------------------------
 # auto-safe lets mpv pick hardware decoding. On a Raspberry Pi 3 (including the

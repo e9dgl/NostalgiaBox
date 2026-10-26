@@ -11,9 +11,11 @@ the rest of the show.
 
 Channel up and down still flip through the shows like TV channels (each folder
 of episodes is a channel). The box boots straight to the TV, needs no internet
-once it is set up, sends audio over HDMI, and keeps an early-2000s feel with a
-green on-screen channel banner and volume bar. Shows keep their own shape: 4:3
-cartoons get black bars at the sides, widescreen shows fill the screen.
+once it is set up, and sends audio over HDMI. The look is 90s kids' TV made
+easy to read: a big rounded font, a chunky channel banner and volume bar in
+yellow with a thick outline, and a deep-blue menu with colour stripes and big
+tiles. Shows keep their own shape: 4:3 cartoons get black bars at the sides,
+widescreen shows fill the screen.
 
 Follow the steps in order. Each step says **which machine** to use, the
 **exact command** to copy, and **what you should see** when it worked.
@@ -617,7 +619,7 @@ BRAVIA Sync (Sony), or HDMI control. The on-screen note says `TV VOL +`,
 does not know the TV's number.
 
 **Pi volume.** Set this in `~/NostalgiaBox/config.yaml` when the TV ignores
-CEC, or when you want the green bar:
+CEC, or when you want the on-screen volume bar:
 
 ```yaml
 volume_control: pi
@@ -908,7 +910,7 @@ nostalgiabox/
 ├── menu.py        the show menu (screens, highlight, what OK plays)
 ├── player.py      mpv player (+ a mock for tests)
 ├── volume.py      TV vs Pi volume mode
-├── overlay.py     the green on-screen display, the menu, "now playing"
+├── overlay.py     the on-screen display, the menu, "now playing"
 ├── input/         remote input (Flirc/keyboard, HDMI-CEC, keymap)
 ├── static_gen.py  ffmpeg-generated static/glitch/colour-bar clips
 └── app.py         the TV state machine (shuffle everything, channels, in-order play)

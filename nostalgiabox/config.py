@@ -80,13 +80,19 @@ INORDER_MARKER = ".inorder"
 
 @dataclass(frozen=True)
 class UiConfig:
-    """Look of the on-screen overlays (the green digital TV readouts)."""
+    """Look of the on-screen overlays and the show menu.
 
-    font: str = "VT323"             # bundled retro terminal font (OFL)
-    color: str = "#4DFF5A"          # bright CRT phosphor green
-    dim_color: str = "#123B18"      # unlit volume segment / dot colour
-    glow: bool = True               # soft glow around the green text
-    menu_accent: str = "#E50914"    # highlight bar behind the chosen menu row
+    The defaults are picked for young children: a big rounded font and strong
+    contrast (yellow and white on deep blue).
+    """
+
+    font: str = "Fredoka SemiBold"  # bundled rounded font (OFL); "VT323" is retro
+    color: str = "#FFD23F"          # banner, volume bar and messages
+    dim_color: str = "#123B18"      # (reserved) unlit volume segment / dot colour
+    glow: bool = False              # true = soft bloom instead of a thick outline
+    menu_accent: str = "#FFD23F"    # the highlighted menu tile
+    menu_background: str = "#16205A"  # menu board, text outlines, dark text
+    menu_tile: str = "#2B3A8C"      # the other menu tiles
 
 
 @dataclass(frozen=True)
@@ -593,6 +599,10 @@ def _parse_ui(raw: Any) -> UiConfig:
         dim_color=_valid_color(raw.get("dim_color", defaults.dim_color), "ui.dim_color"),
         glow=bool(raw.get("glow", defaults.glow)),
         menu_accent=_valid_color(raw.get("menu_accent", defaults.menu_accent), "ui.menu_accent"),
+        menu_background=_valid_color(
+            raw.get("menu_background", defaults.menu_background), "ui.menu_background"
+        ),
+        menu_tile=_valid_color(raw.get("menu_tile", defaults.menu_tile), "ui.menu_tile"),
     )
 
 

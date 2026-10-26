@@ -121,5 +121,5 @@ def test_overlay_uses_configured_font_and_color(tmp_path):
     om = OverlayManager(player, _config(tmp_path), clock=FakeClock())
     om.show_channel_bug(3, "Arthur")
     ass = player.overlays[1]
-    assert "\\fnVT323" in ass          # bundled retro font
-    assert "&H005AFF4D" in ass         # #4DFF5A -> ASS BBGGRR
+    assert "\\fnFredoka SemiBold" in ass  # bundled rounded font
+    assert "&H003FD2FF" in ass             # #FFD23F -> ASS BBGGRR
