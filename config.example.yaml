@@ -142,9 +142,12 @@ volume_step: 5            # Pi mode: how much each volume press changes it
 # up, Left = volume down, m = mute). The TV must have CEC turned on (Anynet+,
 # SimpLink, BRAVIA Sync, or the set's "HDMI control" name).
 volume_control: auto
-# Force audio to a specific output. On a Pi the default can be the 3.5mm jack;
-# for a TV you want HDMI. Run `nostalgiabox --list-audio` to see the names.
-# audio_device: "alsa/hdmi:CARD=vc4hdmi0,DEV=0"   # HDMI0 (use vc4hdmi1 for HDMI1)
+# Where the sound goes. Left out (or "auto"), it follows the TV: the box finds
+# the HDMI port with a TV on it and uses that port for picture, sound and the
+# TV remote, so either micro-HDMI port on a Pi 4 works. A vc4hdmi setting is
+# treated as "auto". Set it only for something else, like a USB sound card;
+# `nostalgiabox --list-audio` lists the names.
+# audio_device: auto
 
 # Pi mode only: pressing volume-down once more when already at 0 cleanly powers
 # off the Pi so it's safe to unplug (needs the sudo rule from

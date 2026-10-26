@@ -107,6 +107,9 @@ def create_backends(options: Optional[Dict] = None) -> List[InputBackend]:
                 CecBackend(
                     binary=binary,
                     osd_name=options.get("cec_osd_name", "NostalgiaBox"),
+                    # The CEC adapter of the HDMI port the TV is on (a Pi 4
+                    # has one per port); none means cec-client's first.
+                    extra_args=[str(options["cec_device"])] if options.get("cec_device") else None,
                 )
             )
         else:

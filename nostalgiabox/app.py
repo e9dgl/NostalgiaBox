@@ -39,6 +39,7 @@ from .actions import Action, InputEvent
 from .bluetooth import BluetoothPairer
 from .channel import Channel, ChannelLineup, PlayRequest, build_lineup
 from .config import Config
+from .hdmi import HdmiWatcher, detect_output, resolve_audio_device
 from .input.manager import InputManager, create_backends
 from .library import Episode, Show, build_library
 from .menu import (
@@ -81,6 +82,7 @@ class TVApp:
         clock: Callable[[], float] = time.monotonic,
         assets_dir: Optional[Path] = None,
         pairer: Optional[BluetoothPairer] = None,
+        hdmi_watcher: Optional[HdmiWatcher] = None,
     ) -> None:
         self.config = config
         self.player = player
@@ -115,6 +117,10 @@ class TVApp:
         self.paused = False
         # "Pair a remote" in the menu, worked with a USB keyboard or mouse.
         self.pairer = pairer or BluetoothPairer()
+        # Set when the TV turns up on the other HDMI port: the main loop stops
+        # and run_from_config starts again on that port.
+        self._hdmi_watcher = hdmi_watcher
+        self.restart_requested = False
         self._pairing_version = -1
 
         # Runtime state. ``volume`` / ``muted`` are the only Pi level. mpv is
@@ -187,6 +193,15 @@ class TVApp:
         backends (a stdin backend is added if a TTY is available), which is how
         the box can be exercised on a development machine.
         """
+        output = None if dry_run else detect_output()
+        if output is not None:
+            log.info(
+                "TV found on %s: picture %s, sound %s, TV remote %s",
+                output.label, output.connector, output.audio_device or "default",
+                output.cec_device or "default",
+            )
+        elif not dry_run:
+            log.info("no TV found on an HDMI port yet; watching for one")
         if player is None:
             if dry_run:
                 player = MockPlayer(verbose=True)
@@ -197,17 +212,23 @@ class TVApp:
                 player = MpvPlayer(
                     hwdec=config.hwdec,
                     fonts_dir=assets / "fonts",
-                    audio_device=config.audio_device,
+                    audio_device=resolve_audio_device(config.audio_device, output),
+                    # Only the port with the TV gets a picture.
+                    extra_options={"drm_connector": output.connector} if output else None,
                 )
 
         if input_manager is None:
             if dry_run:
                 backends = create_backends({"keyboard": False, "cec": False, "stdin": True})
             else:
-                backends = create_backends(config.input_options)
+                options = dict(config.input_options)
+                if output is not None and output.cec_device and "cec_device" not in options:
+                    options["cec_device"] = output.cec_device
+                backends = create_backends(options)
             input_manager = InputManager(backends)
 
-        return cls(config, player, input_manager, assets_dir=assets_dir)
+        watcher = None if dry_run else HdmiWatcher(output.connector if output else None)
+        return cls(config, player, input_manager, assets_dir=assets_dir, hdmi_watcher=watcher)
 
     # -- lifecycle ----------------------------------------------------------
     def start(self) -> None:
@@ -268,10 +289,21 @@ class TVApp:
         self._maybe_commit_digits(now)
         self._drain_playback_events()
         self._watch_for_stall(now)
+        self._watch_hdmi(now)
 
         event = self.input.get(timeout=timeout if block else 0.0)
         if event is not None:
             self.handle_event(event)
+
+    def _watch_hdmi(self, now: float) -> None:
+        """Start again on the other HDMI port when the TV has moved there."""
+        if self._hdmi_watcher is None:
+            return
+        target = self._hdmi_watcher.check(now)
+        if target is not None:
+            log.info("the TV is now on %s; restarting on that port", target)
+            self.restart_requested = True
+            self._running = False
 
     def _maybe_commit_switch(self, now: float) -> None:
         """Cut over to the preloaded channel once the bridge window has elapsed."""
@@ -1050,8 +1082,11 @@ def run_from_config(config: Config, *, dry_run: bool = False) -> None:
             "No show folders found. Put one folder per show in "
             f"{root} (the folder name is the channel name), then start again."
         )
-    app = TVApp.from_config(config, dry_run=dry_run)
-    app.run()
+    while True:
+        app = TVApp.from_config(config, dry_run=dry_run)
+        app.run()
+        if not app.restart_requested:
+            return
 
 
 __all__ = ["TVApp", "run_from_config"]

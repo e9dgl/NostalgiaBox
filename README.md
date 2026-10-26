@@ -60,7 +60,7 @@ Everything you need to build one:
 
 | Part | Link | What it's for |
 |------|------|---------------|
-| **Raspberry Pi 4 Model B** | https://amzn.to/4w6HcSC | The "brain" of the box (2GB RAM or more is plenty). A Raspberry Pi 3 Model A+ also works; see [Using a Raspberry Pi 3 A+](#using-a-raspberry-pi-3-a) |
+| **Raspberry Pi 4 Model B** | https://amzn.to/4w6HcSC | The "brain" of the box (1GB is enough for NostalgiaBox). A Raspberry Pi 3 Model A+ also works; see [Using a Raspberry Pi 3 A+](#using-a-raspberry-pi-3-a) |
 | **Flirc USB Remote Adapter** | https://amzn.to/4h7hZ5O | Plugs into the Pi and lets **any** remote control it |
 | **Simple TV Remote** | https://amzn.to/4wId7bZ | The big-button remote your kids will actually use |
 | **Micro-HDMI → Full HDMI cable** | https://amzn.to/4pn1TXS | Connects the Pi to the TV (the Pi 4 uses micro-HDMI) |
@@ -132,8 +132,8 @@ differences before you buy:
 2. Plug the **Flirc** adapter into a USB port on the Pi. (You will unplug it
    in step 8 to program the remote, then plug it back in.)
 3. Connect the **micro-HDMI → HDMI** cable from the Pi to the TV. On a Pi 4,
-   use the micro-HDMI port **next to the USB-C power plug**. A Pi 3 A+ has one
-   full-size HDMI port and uses a normal HDMI cable.
+   either micro-HDMI port works; the box finds the one with the TV on it. A
+   Pi 3 A+ has one full-size HDMI port and uses a normal HDMI cable.
 4. Insert the SD card.
 5. Plug in power. Wait about a minute. The TV may stay black. That is normal
    for Raspberry Pi OS Lite — there is no desktop.
@@ -431,41 +431,26 @@ back. On a keyboard, use the arrow keys, Enter and Esc.
 
 ---
 
-## 9. Send the sound to the TV
+## 9. Sound and the two HDMI ports
 
-**On the Pi.** The Pi sometimes sends audio to the headphone jack. List the
-outputs:
-
-```bash
-nostalgiabox --list-audio
-```
-
-**What you should see:** several lines. Find the one whose description mentions
-**HDMI**. The name looks like `alsa/hdmi:CARD=vc4hdmi0,DEV=0`.
-
-On a Pi 4, the HDMI port next to the USB-C power plug is `vc4hdmi0`. The other
-micro-HDMI port is `vc4hdmi1`. Use the one that matches the cable from step 3.
-A Pi 3 has a single HDMI port, usually listed as `vc4hdmi`.
-
-**On the Pi**, open the settings file:
+**Nothing to do.** NostalgiaBox looks for the HDMI port with a TV on it each
+time it starts, and sends the picture, the sound and the TV-remote (HDMI-CEC)
+all to that port. A Pi 4 has two micro-HDMI ports and either one works. Only
+one is ever used: with a TV on both, HDMI 0 (next to the USB-C power plug)
+wins. If the cable is moved to the other port while the box is on, it starts
+again on the new port within a few seconds. The journal says which port it
+chose:
 
 ```bash
-nano ~/NostalgiaBox/config.yaml
-```
-
-Add this line, using the name you found (keep the quotes):
-
-```yaml
-audio_device: "alsa/hdmi:CARD=vc4hdmi0,DEV=0"
-```
-
-Save with **Ctrl+O**, Enter, then leave nano with **Ctrl+X**. Apply it:
-
-```bash
-sudo systemctl restart nostalgiabox
+journalctl -u nostalgiabox -n 50 --no-pager | grep "TV found"
 ```
 
 **What you should see:** sound from the TV speakers.
+
+Only set `audio_device` in `config.yaml` to send the sound somewhere other
+than the TV, such as a USB sound card (`nostalgiabox --list-audio` lists the
+names). An old `vc4hdmi0` or `vc4hdmi1` setting is ignored in favour of the
+port the TV is on.
 
 ---
 
@@ -850,8 +835,9 @@ whole file forgives every episode. The `.log` file is only a history.
 
 ### No sound
 
-Repeat step 9. If you used `vc4hdmi0`, try `vc4hdmi1` (or the other way
-around), then `sudo systemctl restart nostalgiabox`.
+Check the TV's own volume and input first. Then see which port the box chose
+(step 9). If `audio_device` is set in `config.yaml` to something that is not
+HDMI, remove that line and run `sudo systemctl restart nostalgiabox`.
 
 ### Volume keeps climbing, or jumps between shows
 
@@ -921,7 +907,7 @@ start_offset: [6, 10]        # start each episode 6–10 seconds in
 transition: none             # none | glitch | static
 initial_volume: 100          # Pi output. 100 = let the TV do the volume
 volume_control: auto         # auto | tv | pi   (auto = TV only if a TV answers)
-audio_device: "alsa/hdmi:CARD=vc4hdmi0,DEV=0"
+audio_device: auto           # follows the HDMI port the TV is on
 ```
 
 To number channels yourself, or to skip seasons, uncomment a `channels:` list
