@@ -29,6 +29,9 @@ class Action(Enum):
     POWER = auto()          # toggle standby (blank screen)
     BACK = auto()           # open the show menu, or go up one level in it
     MENU = auto()           # open or close the show menu
+    PLAY_PAUSE = auto()     # pause the episode, or carry on
+    FAST_FORWARD = auto()   # jump ahead a little
+    REWIND = auto()         # jump back a little
     QUIT = auto()           # shut the application down entirely
 
 

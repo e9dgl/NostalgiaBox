@@ -53,6 +53,7 @@ _ID_STANDBY = 3
 _ID_MESSAGE = 4
 _ID_MENU = 5
 _ID_NOW_PLAYING = 6
+_ID_PAUSE = 7
 
 # How many menu rows fit on screen at once.
 MENU_ROWS = 5
@@ -123,6 +124,19 @@ class OverlayManager:
         self._player.clear_overlay(_ID_MENU)
         self._expiry.pop(_ID_MENU, None)
 
+    def show_paused(self, show: str, code: str, episode: str) -> None:
+        """The pause card: show, series and episode numbers, episode name."""
+        self._player.clear_overlay(_ID_NOW_PLAYING)
+        self._expiry.pop(_ID_NOW_PLAYING, None)
+        self._player.set_overlay(
+            _ID_PAUSE, _pause_ass(show, code, episode, self._ui), CANVAS_W, CANVAS_H
+        )
+        self._expiry.pop(_ID_PAUSE, None)
+
+    def clear_pause(self) -> None:
+        self._player.clear_overlay(_ID_PAUSE)
+        self._expiry.pop(_ID_PAUSE, None)
+
     def show_standby(self) -> None:
         """Persistent 'standby' notice for when the box is 'off'."""
         ass = _standby_ass(self._ui)
@@ -144,6 +158,7 @@ class OverlayManager:
     def clear_all(self) -> None:
         for overlay_id in (
             _ID_CHANNEL, _ID_VOLUME, _ID_STANDBY, _ID_MESSAGE, _ID_MENU, _ID_NOW_PLAYING,
+            _ID_PAUSE,
         ):
             self._player.clear_overlay(overlay_id)
         self._expiry.clear()
@@ -271,6 +286,52 @@ def _now_playing_ass(show: str, episode: str, ui: UiConfig) -> str:
     ])
 
 
+def _pause_ass(show: str, code: str, episode: str, ui: UiConfig) -> str:
+    """Paused: the picture dims and a card says what is on."""
+    w, h = 900, 380
+    x, y = (CANVAS_W - w) // 2, (CANVAS_H - h) // 2
+    cx = CANVAS_W // 2
+    parts = [
+        # Dim the frozen picture so the card stands out.
+        rf"{{\an7\pos(0,0)\p1\c{_BLACK}\1a&H60&\bord0\shad0}}"
+        rf"m 0 0 l {CANVAS_W} 0 l {CANVAS_W} {CANVAS_H} l 0 {CANVAS_H}{{\p0}}",
+        _rounded_rect(x=x, y=y, w=w, h=h, r=32, fill=ui.menu_background),
+        # "PAUSED" on a yellow tab across the top edge of the card.
+        _rounded_rect(x=cx - 120, y=y - 30, w=240, h=60, r=30, fill=ui.menu_accent),
+        _pause_icon(cx - 70, y, ui.menu_background),
+        rf"{{\an4\pos({cx - 38},{y}){_text(ui, size=38, color=ui.menu_background)}}}PAUSED",
+        rf"{{\an8\pos({cx},{y + 56}){_text(ui, size=64, color=_WHITE)}}}{_escape(_clip(show, 26))}",
+    ]
+    line_y = y + 148
+    if code:
+        parts.append(
+            rf"{{\an8\pos({cx},{line_y}){_text(ui, size=44, color=ui.menu_accent)}}}{_escape(code)}"
+        )
+        line_y += 64
+    if episode:
+        parts.append(
+            rf"{{\an8\pos({cx},{line_y}){_text(ui, size=44, color=_WHITE)}}}"
+            rf"{_escape(_clip(episode, 34))}"
+        )
+    parts.append(
+        rf"{{\an2\pos({cx},{y + h - 24}){_text(ui, size=30, color=_SOFT)}}}"
+        rf"Press PLAY or OK to carry on"
+    )
+    return "\n".join(parts)
+
+
+def _pause_icon(cx: int, cy: int, fill: str) -> str:
+    """Two bars: the pause symbol, drawn so it does not depend on the font."""
+    color = _hex_to_ass(fill)
+    bars = []
+    for dx in (-9, 5):
+        bars.append(
+            rf"{{\an7\pos({cx + dx},{cy - 13})\p1\c{color}\1a&H00&\bord0\shad0}}"
+            rf"m 0 0 l 8 0 l 8 26 l 0 26{{\p0}}"
+        )
+    return "\n".join(bars)
+
+
 def _menu_ass(menu: "Menu", ui: UiConfig) -> str:
     """The show menu: a solid screen of big rounded tiles, one highlighted."""
     screen = menu.screen
@@ -295,6 +356,11 @@ def _menu_ass(menu: "Menu", ui: UiConfig) -> str:
         rf"{{\an7\pos({x0},{_IY0 + 34}){_text(ui, size=64, color=_WHITE)}}}"
         rf"{_escape(_clip(screen.title, 34))}"
     )
+    if screen.note:
+        parts.append(
+            rf"{{\an7\pos({x0},{_IY0 + 108}){_text(ui, size=30, color=ui.menu_accent)}}}"
+            rf"{_escape(_clip(screen.note, 70))}"
+        )
 
     first, rows = menu.visible(MENU_ROWS)
     for offset, item in enumerate(rows):

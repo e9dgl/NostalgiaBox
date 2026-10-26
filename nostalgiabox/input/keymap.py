@@ -66,6 +66,24 @@ _EVDEV_ACTIONS: Dict[str, InputEvent] = {
     "KEY_EPG": InputEvent(Action.MENU),
     "KEY_PROGRAM": InputEvent(Action.MENU),
     "KEY_COMPOSE": InputEvent(Action.MENU),
+    # Play / pause, fast-forward and rewind. Remotes disagree on the codes.
+    "KEY_PLAYPAUSE": InputEvent(Action.PLAY_PAUSE),
+    "KEY_PLAY": InputEvent(Action.PLAY_PAUSE),
+    "KEY_PAUSE": InputEvent(Action.PLAY_PAUSE),
+    "KEY_PLAYCD": InputEvent(Action.PLAY_PAUSE),
+    "KEY_PAUSECD": InputEvent(Action.PLAY_PAUSE),
+    "KEY_FASTFORWARD": InputEvent(Action.FAST_FORWARD),
+    "KEY_FORWARD": InputEvent(Action.FAST_FORWARD),
+    "KEY_NEXTSONG": InputEvent(Action.FAST_FORWARD),
+    "KEY_REWIND": InputEvent(Action.REWIND),
+    "KEY_PREVIOUSSONG": InputEvent(Action.REWIND),
+    "KEY_K": InputEvent(Action.PLAY_PAUSE),
+    "KEY_DOT": InputEvent(Action.FAST_FORWARD),
+    "KEY_COMMA": InputEvent(Action.REWIND),
+    # A USB mouse (or an air mouse in pointer mode) can drive the menu:
+    # left click is OK, right click is Back. The wheel is handled separately.
+    "BTN_LEFT": InputEvent(Action.ENTER),
+    "BTN_RIGHT": InputEvent(Action.BACK),
     # Power / standby.
     "KEY_POWER": InputEvent(Action.POWER),
     "KEY_SLEEP": InputEvent(Action.POWER),
@@ -101,6 +119,9 @@ _ACTION_BY_NAME: Dict[str, InputEvent] = {
     "power": InputEvent(Action.POWER),
     "back": InputEvent(Action.BACK),
     "menu": InputEvent(Action.MENU),
+    "play_pause": InputEvent(Action.PLAY_PAUSE),
+    "fast_forward": InputEvent(Action.FAST_FORWARD),
+    "rewind": InputEvent(Action.REWIND),
     "quit": InputEvent(Action.QUIT),
     "none": None,  # explicitly unbind a key
 }
@@ -167,6 +188,10 @@ _CHAR_TO_KEY: Dict[str, str] = {
     "B": "KEY_BACKSPACE",
     "g": "KEY_MENU",
     "G": "KEY_MENU",
+    "k": "KEY_K",
+    "K": "KEY_K",
+    ".": "KEY_DOT",
+    ",": "KEY_COMMA",
 }
 for _d in range(10):
     _CHAR_TO_KEY[str(_d)] = f"KEY_{_d}"
@@ -216,6 +241,13 @@ _CEC_ACTIONS: Dict[str, InputEvent] = {
     "root menu": InputEvent(Action.MENU),
     "setup menu": InputEvent(Action.MENU),
     "contents menu": InputEvent(Action.MENU),
+    "play": InputEvent(Action.PLAY_PAUSE),
+    "pause": InputEvent(Action.PLAY_PAUSE),
+    "pause-play function": InputEvent(Action.PLAY_PAUSE),
+    "fast forward": InputEvent(Action.FAST_FORWARD),
+    "forward": InputEvent(Action.FAST_FORWARD),
+    "rewind": InputEvent(Action.REWIND),
+    "backward": InputEvent(Action.REWIND),
     "power": InputEvent(Action.POWER),
     "power toggle function": InputEvent(Action.POWER),
     "power off function": InputEvent(Action.POWER),

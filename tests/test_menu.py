@@ -102,7 +102,7 @@ def test_top_level_is_shuffle_then_shows(tmp_path):
     menu = _menu(tmp_path)
     menu.open()
     labels = [i.label for i in menu.screen.items]
-    assert labels == ["Shuffle everything", "Arthur", "Pingu", "The Raccoons"]
+    assert labels == ["Shuffle everything", "Arthur", "Pingu", "The Raccoons", "Pair a remote"]
     assert menu.select().kind == SHUFFLE_ALL
 
 
@@ -117,7 +117,9 @@ def test_single_series_show_lists_episodes(tmp_path):
     menu.open(current_show="Pingu")
     assert menu.select() is None  # opens the show
     labels = [i.label for i in menu.screen.items]
-    assert labels == ["Play from the start", "Shuffle Pingu", "01", "02", "03"]
+    assert labels == [
+        "Play from the start", "Shuffle Pingu", "Episode 1", "Episode 2", "Episode 3",
+    ]
 
     menu.move(3)  # "Pingu 02"
     choice = menu.select()
@@ -163,7 +165,7 @@ def test_cursor_wraps(tmp_path):
     menu = _menu(tmp_path)
     menu.open()
     menu.move(-1)
-    assert menu.screen.items[menu.screen.cursor].label == "The Raccoons"
+    assert menu.screen.items[menu.screen.cursor].label == "Pair a remote"
 
 
 def test_visible_window_keeps_cursor_on_screen(tmp_path):

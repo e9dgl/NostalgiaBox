@@ -148,9 +148,10 @@ class KeyboardBackend(InputBackend):
                     continue
                 try:
                     for event in dev.read():
-                        if event.type != ecodes.EV_KEY:
-                            continue
-                        self._handle_key_event(event)
+                        if event.type == ecodes.EV_KEY:
+                            self._handle_key_event(event)
+                        elif event.type == ecodes.EV_REL and event.code == ecodes.REL_WHEEL:
+                            self._handle_wheel(event.value)
                 except OSError:
                     log.info("input device went away: %s", getattr(dev, "name", "?"))
                     self._drop(dev)
@@ -159,6 +160,13 @@ class KeyboardBackend(InputBackend):
                 self._devices.extend(
                     self._open_devices(skip=[d.path for d in self._devices])
                 )
+
+    def _handle_wheel(self, value: int) -> None:
+        """A mouse wheel moves through the menu: up is up, down is down."""
+        if value > 0:
+            self.emit(InputEvent(Action.CHANNEL_UP))
+        elif value < 0:
+            self.emit(InputEvent(Action.CHANNEL_DOWN))
 
     def _drop(self, dev) -> None:
         """Forget a device that disconnected (a Bluetooth remote going to sleep)."""
@@ -180,7 +188,8 @@ class KeyboardBackend(InputBackend):
         input_event = None
         # One code can have several names (113 is both KEY_MIN_INTERESTING and
         # KEY_MUTE), so try each until one means something.
-        for key_name in _code_to_names(ecodes.KEY, event.code):
+        # ``ecodes.keys`` covers KEY_* and BTN_* (mouse buttons) together.
+        for key_name in _code_to_names(getattr(ecodes, "keys", ecodes.KEY), event.code):
             input_event = self._lookup(key_name)
             if input_event is not None:
                 break

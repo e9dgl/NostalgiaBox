@@ -8,7 +8,8 @@ Three levels, all driven by Up / Down / OK / Back on the remote:
 3. **One series** - "Play <series> from the start", then its episodes.
 
 Choosing an episode plays it and carries on through the rest of the show in
-order. The menu itself is pure state: :meth:`Menu.select` returns a
+order. The last line of the top level, **Pair a remote**, opens a screen the
+app fills in as Bluetooth devices are found. The menu itself is pure state: :meth:`Menu.select` returns a
 :class:`Choice` and the app decides how to play it. Drawing lives in
 ``overlay.py``.
 """
@@ -25,6 +26,9 @@ from .library import Series, Show
 SHUFFLE_ALL = "shuffle_all"    # random episodes from every show
 SHUFFLE_SHOW = "shuffle_show"  # that show's channel, on shuffle
 PLAY_QUEUE = "play_queue"      # paths[index], then onward in order
+PAIR_REMOTE = "pair_remote"    # open the Bluetooth pairing screen
+PAIR_SEARCH = "pair_search"    # search for remotes again
+PAIR_DEVICE = "pair_device"    # pair the device whose address is ``value``
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,7 @@ class Choice:
     show: Optional[Show] = None
     paths: Tuple[Path, ...] = ()
     index: int = 0
+    value: str = ""
 
 
 @dataclass(frozen=True)
@@ -50,6 +55,10 @@ class Screen:
     items: List[MenuItem]
     breadcrumb: str = ""
     cursor: int = 0
+    # A line of status text under the title (the pairing screen uses it).
+    note: str = ""
+    # Lets the app recognise screens it fills in itself, like "pairing".
+    kind: str = ""
 
 
 class Menu:
@@ -92,6 +101,24 @@ class Menu:
         screen = self.screen
         screen.cursor = (screen.cursor + step) % len(screen.items)
 
+    def push(self, screen: Screen) -> None:
+        """Open a screen the app built (it stays until Back)."""
+        self._stack.append(screen)
+
+    def set_items(self, items: List[MenuItem]) -> None:
+        """Replace the current screen's list, keeping the highlight on the
+        same entry when it is still there."""
+        screen = self.screen
+        old_index = screen.cursor
+        old = screen.items[old_index] if screen.items else None
+        screen.items = items
+        screen.cursor = min(old_index, max(0, len(items) - 1))
+        if old is not None:
+            for i, item in enumerate(items):
+                if item.choice == old.choice and item.opens is None:
+                    screen.cursor = i
+                    break
+
     def back(self) -> None:
         """Go up one level. Backing out of the top level closes the menu."""
         if self._stack:
@@ -127,6 +154,7 @@ class Menu:
                     detail=_count(count, "episode"),
                 )
             )
+        items.append(MenuItem("Pair a remote", choice=Choice(PAIR_REMOTE)))
         return Screen("What do you want to watch?", items)
 
     def _show_screen(self, show: Show) -> Screen:
@@ -148,7 +176,7 @@ class Menu:
                 offset += len(series.episodes)
         else:
             for i, ep in enumerate(show.episodes):
-                items.append(MenuItem(ep.title, choice=Choice(PLAY_QUEUE, show, paths, i)))
+                items.append(MenuItem(ep.label, choice=Choice(PLAY_QUEUE, show, paths, i)))
         return Screen(show.name, items, breadcrumb="All shows")
 
     def _series_screen(
@@ -161,7 +189,7 @@ class Menu:
             )
         ]
         for i, ep in enumerate(series.episodes):
-            items.append(MenuItem(ep.title, choice=Choice(PLAY_QUEUE, show, paths, offset + i)))
+            items.append(MenuItem(ep.label, choice=Choice(PLAY_QUEUE, show, paths, offset + i)))
         return Screen(series.name, items, breadcrumb=show.name)
 
 
@@ -177,4 +205,7 @@ __all__ = [
     "SHUFFLE_ALL",
     "SHUFFLE_SHOW",
     "PLAY_QUEUE",
+    "PAIR_REMOTE",
+    "PAIR_SEARCH",
+    "PAIR_DEVICE",
 ]

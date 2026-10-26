@@ -417,7 +417,17 @@ quit
 NostalgiaBox notices a remote that connects at any time. Reboot once after
 installing (`sudo reboot`) so the remote's power button blanks the screen
 instead of shutting the Pi down. Back opens the menu, Home opens or closes it,
-OK chooses, up/down move, and the volume keys change the volume.
+OK chooses, up/down move, the volume keys change the volume, and play/pause,
+rewind and fast-forward work as you would expect.
+
+**Pairing again later, without SSH.** If the remote gets un-paired (new
+batteries, a reset, or a new remote), plug a USB keyboard or mouse into the
+Pi. Press **Esc** (or the right mouse button) to open the menu, scroll to the
+bottom, and choose **Pair a remote**. Put the remote in pairing mode, wait for
+it to appear in the list (about 20 seconds), and choose it. The box pairs,
+trusts and connects it, and says "is ready" when it is done. On a mouse, the
+wheel moves the highlight, the left button chooses and the right button goes
+back. On a keyboard, use the arrow keys, Enter and Esc.
 
 ---
 
@@ -494,6 +504,8 @@ it again.
 | Do this | On the remote |
 |---------|---------------|
 | Pick a show or an episode | **Back** (or OK) opens the menu. Up / down to move, OK to choose, Back to go back |
+| Pause, and see what is on | **Play/pause**. The screen shows the show, series and episode, and the episode's name when the file has one. Play or OK carries on |
+| Skip ahead / back | **Fast-forward** jumps 30 seconds, **Rewind** goes back 10 (`seek_forward_seconds`, `seek_back_seconds`) |
 | Change channels | Channel up / down |
 | Adjust volume | Volume up / down (the TV, when HDMI-CEC works) |
 | Mute | Mute |
@@ -535,7 +547,10 @@ order (`Season 1/`, `Season 2/`, `Season 10/`; a folder like `Specials/` goes
 last). A show with no sub-folders is split by the season in its file names
 (`S02E05`, `2x05`, `Season 2`). A show with neither is a single series.
 Episode names come from the file names, with the show's own name left off the
-front: `Arthur - S01E02 - Arthur's Eyes.mp4` shows as `S01E02 - Arthur's Eyes`.
+front: `Arthur - S01E02 - Arthur's Eyes.mp4` is listed as `2. Arthur's Eyes`,
+and the pause screen shows *Arthur*, *Series 1 Episode 2*, *Arthur's Eyes*.
+`1x02`, `Episode 2`, `102` and `02 - Name` (inside a `Season 1/` folder) are
+understood too.
 
 ```text
 Pingu/                      one series: the menu lists the episodes
@@ -896,6 +911,8 @@ prefer_usb: true             # a USB drive with videos wins over the SD folder
 first_channel_number: 2
 start_mode: shuffle_all      # shuffle_all | channel   (what plays at power-on)
 menu_timeout: 60             # seconds before an untouched menu closes; 0 = never
+seek_forward_seconds: 30     # fast-forward jump
+seek_back_seconds: 10        # rewind jump
 hwdec: auto-safe             # try v4l2m2m-copy on a Pi 3 if H.264 stutters
 tune_in: random              # random | resume | broadcast
 order: shuffle               # shuffle | in_order   (shuffle: false = in_order)

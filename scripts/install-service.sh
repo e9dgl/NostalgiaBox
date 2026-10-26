@@ -53,6 +53,13 @@ HandleSuspendKey=ignore
 HandleHibernateKey=ignore
 EOF
 
+echo "==> Letting '${RUN_USER}' pair remotes from the menu"
+# The "Pair a remote" screen runs bluetoothctl, which BlueZ only allows for
+# root and the bluetooth group.
+if getent group bluetooth > /dev/null; then
+  sudo usermod -aG bluetooth "${RUN_USER}"
+fi
+
 echo "==> Enabling and starting the service"
 sudo systemctl daemon-reload
 sudo systemctl enable nostalgiabox.service

@@ -12,10 +12,14 @@ from nostalgiabox.actions import Action
 from nostalgiabox.input import keyboard as kb
 
 EV_KEY = 1
+EV_REL = 2
+REL_WHEEL = 8
 KEY_NAMES = {
     103: "KEY_UP",
     113: ["KEY_MIN_INTERESTING", "KEY_MUTE"],
     158: "KEY_BACK",
+    164: "KEY_PLAYPAUSE",
+    272: ["BTN_LEFT", "BTN_MOUSE"],
 }
 
 
@@ -36,8 +40,8 @@ class FakeDevice:
     def capabilities(self):
         return {EV_KEY: [103]}
 
-    def press(self, code):
-        self._events.append(types.SimpleNamespace(type=EV_KEY, code=code, value=1))
+    def press(self, code, *, type=EV_KEY, value=1):
+        self._events.append(types.SimpleNamespace(type=type, code=code, value=value))
         os.write(self._write_fd, b"x")
 
     def read(self):
@@ -55,7 +59,9 @@ class FakeDevice:
 @pytest.fixture
 def fake_evdev(monkeypatch):
     FakeDevice.registry = {}
-    ecodes = types.SimpleNamespace(EV_KEY=EV_KEY, KEY=KEY_NAMES)
+    ecodes = types.SimpleNamespace(
+        EV_KEY=EV_KEY, EV_REL=EV_REL, REL_WHEEL=REL_WHEEL, KEY=KEY_NAMES, keys=KEY_NAMES
+    )
     module = types.SimpleNamespace(
         InputDevice=FakeDevice,
         list_devices=lambda: list(FakeDevice.registry),
@@ -107,5 +113,25 @@ def test_key_with_several_names_still_maps(fake_evdev):
         fake_evdev["/dev/input/event1"]["device"].press(113)  # mute
         assert _wait_for(lambda: events)
         assert events[0].action == Action.MUTE
+    finally:
+        backend.stop()
+
+
+def test_media_keys_and_a_usb_mouse(fake_evdev):
+    fake_evdev["/dev/input/event2"] = {"name": "USB Mouse"}
+    backend = kb.KeyboardBackend()
+    events = []
+    backend.emit = events.append
+    backend.start(Queue())
+    try:
+        assert _wait_for(lambda: "device" in fake_evdev["/dev/input/event2"])
+        dev = fake_evdev["/dev/input/event2"]["device"]
+        dev.press(164)                                   # play/pause
+        dev.press(272)                                   # left click
+        dev.press(REL_WHEEL, type=EV_REL, value=-1)      # wheel down
+        assert _wait_for(lambda: len(events) == 3)
+        assert [e.action for e in events] == [
+            Action.PLAY_PAUSE, Action.ENTER, Action.CHANNEL_DOWN,
+        ]
     finally:
         backend.stop()

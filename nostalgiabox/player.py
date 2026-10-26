@@ -80,6 +80,15 @@ class Player(ABC):
         """Jump to an absolute position. Used when the picture has frozen."""
         raise NotImplementedError
 
+    def seek_relative(self, seconds: float) -> None:
+        """Jump forward (positive) or back (negative) from the current spot."""
+        pos = self.get_time_pos() or 0.0
+        self.seek(max(0.0, pos + seconds))
+
+    def set_pause(self, paused: bool) -> None:
+        """Pause or carry on with the current episode."""
+        raise NotImplementedError
+
     def playback_sample(self) -> PlaybackSample:
         """Clock, pause, and frame identity for the stall watchdog.
 
@@ -362,6 +371,18 @@ class MpvPlayer(Player):
             log.exception("seek to %.1fs failed", seconds)
             raise
 
+    def seek_relative(self, seconds: float) -> None:  # pragma: no cover - needs libmpv
+        try:
+            self._mpv.command("seek", f"{float(seconds):+.3f}", "relative")
+        except Exception:  # noqa: BLE001
+            log.exception("relative seek by %.1fs failed", seconds)
+
+    def set_pause(self, paused: bool) -> None:  # pragma: no cover - needs libmpv
+        try:
+            self._mpv.pause = bool(paused)
+        except Exception:  # noqa: BLE001
+            log.exception("could not %s", "pause" if paused else "resume")
+
     def playback_sample(self) -> PlaybackSample:  # pragma: no cover - needs libmpv
         try:
             raw_pos = self._mpv.time_pos
@@ -552,6 +573,16 @@ class MockPlayer(Player):
         self.time_pos = target
         self.paused = False
         self._log(f"SEEK {target:.1f}s")
+
+    def seek_relative(self, seconds: float) -> None:
+        target = max(0.0, (self.time_pos or 0.0) + float(seconds))
+        self.seeks.append(target)
+        self.time_pos = target
+        self._log(f"SEEK {seconds:+.1f}s -> {target:.1f}s")
+
+    def set_pause(self, paused: bool) -> None:
+        self.paused = bool(paused)
+        self._log("PAUSE" if paused else "RESUME")
 
     def playback_sample(self) -> PlaybackSample:
         if self.fail_sample:

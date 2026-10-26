@@ -83,6 +83,12 @@ start_channel: 2          # the channel used by start_mode: channel
 # The menu closes by itself after this many seconds without a press (0 = never).
 menu_timeout: 60
 
+# --- Play/pause, fast-forward and rewind --------------------------------------
+# Play/pause freezes the picture and shows the show, series, episode and the
+# episode's name. Fast-forward and rewind jump by these many seconds.
+seek_forward_seconds: 30
+seek_back_seconds: 10
+
 # --- The "feel" of the TV ----------------------------------------------------
 # Every show keeps its own shape: 4:3 shows get black bars at the sides, 16:9
 # shows fill the screen.
@@ -176,7 +182,8 @@ input:
 
   # Map specific keys to actions (handy for odd remotes). Find a button's key
   # name with `sudo evtest`. Actions: channel_up, channel_down, volume_up,
-  # volume_down, mute, enter, back, menu, info, last_channel, power, quit,
+  # volume_down, mute, enter, back, menu, play_pause, fast_forward, rewind,
+  # info, last_channel, power, quit,
   # digit_0..digit_9, or none (to unbind). In the show menu, channel up/down
   # move the highlight, enter chooses, and back goes up a level. Escape is
   # back, not quit. Example for a Logitech R400 presenter:

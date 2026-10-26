@@ -139,6 +139,9 @@ class Config:
     # Close the show menu after this many seconds without a button press.
     # 0 keeps it open until Back.
     menu_timeout: float = 60.0
+    # How far fast-forward and rewind jump, in seconds.
+    seek_forward_seconds: float = 30.0
+    seek_back_seconds: float = 10.0
 
     # Presentation / "feel" of the TV.
     # Start each episode a random number of seconds in (between min and max), so
@@ -538,6 +541,12 @@ def config_from_dict(data: Dict[str, Any], *, base_dir: Optional[Path] = None) -
         start_channel=start_channel,
         start_mode=start_mode,
         menu_timeout=_clamp_float(data.get("menu_timeout", 60.0), 0.0, 3600.0, "menu_timeout"),
+        seek_forward_seconds=_clamp_float(
+            data.get("seek_forward_seconds", 30.0), 1.0, 600.0, "seek_forward_seconds"
+        ),
+        seek_back_seconds=_clamp_float(
+            data.get("seek_back_seconds", 10.0), 1.0, 600.0, "seek_back_seconds"
+        ),
         start_offset_min=_offset_range(data)[0],
         start_offset_max=_offset_range(data)[1],
         transition_effect=_valid_transition(data.get("transition", "none")),

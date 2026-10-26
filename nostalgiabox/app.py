@@ -36,11 +36,23 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from .actions import Action, InputEvent
+from .bluetooth import BluetoothPairer
 from .channel import Channel, ChannelLineup, PlayRequest, build_lineup
 from .config import Config
 from .input.manager import InputManager, create_backends
-from .library import build_library
-from .menu import PLAY_QUEUE, SHUFFLE_ALL, SHUFFLE_SHOW, Choice, Menu
+from .library import Episode, Show, build_library
+from .menu import (
+    PAIR_DEVICE,
+    PAIR_REMOTE,
+    PAIR_SEARCH,
+    PLAY_QUEUE,
+    SHUFFLE_ALL,
+    SHUFFLE_SHOW,
+    Choice,
+    Menu,
+    MenuItem,
+    Screen,
+)
 from .overlay import OverlayManager
 from .playlist import ShuffleBag
 from .player import END_EOF, END_ERROR, MockPlayer, Player
@@ -68,6 +80,7 @@ class TVApp:
         overlay: Optional[OverlayManager] = None,
         clock: Callable[[], float] = time.monotonic,
         assets_dir: Optional[Path] = None,
+        pairer: Optional[BluetoothPairer] = None,
     ) -> None:
         self.config = config
         self.player = player
@@ -81,9 +94,9 @@ class TVApp:
         self.shows = build_library(list(self.lineup))
         self.menu = Menu(self.shows)
         self._menu_deadline = 0.0
-        # path -> (channel number, show name, episode title)
-        self._episode_info: Dict[Path, Tuple[int, str, str]] = {
-            ep.path: (show.channel_number, show.name, ep.title)
+        # path -> (show, episode): names and numbers for captions and pause.
+        self._episode_info: Dict[Path, Tuple[Show, Episode]] = {
+            ep.path: (show, ep)
             for show in self.shows
             for ep in show.episodes
         }
@@ -98,6 +111,11 @@ class TVApp:
         self._queue_index = 0
         # Where a queued episode was when standby blanked the screen.
         self._queue_resume = 0.0
+        # Play/pause. Anything that starts a new episode clears it.
+        self.paused = False
+        # "Pair a remote" in the menu, worked with a USB keyboard or mouse.
+        self.pairer = pairer or BluetoothPairer()
+        self._pairing_version = -1
 
         # Runtime state. ``volume`` / ``muted`` are the only Pi level. mpv is
         # told this number at startup and again after every file; it is not
@@ -244,6 +262,7 @@ class TVApp:
         self._resolve_volume_mode()
         self._maybe_checkpoint(now)
         self.overlay.tick()
+        self._refresh_pairing_screen()
         self._maybe_close_idle_menu(now)
         self._maybe_commit_switch(now)
         self._maybe_commit_digits(now)
@@ -287,6 +306,11 @@ class TVApp:
             self._handle_menu_event(event)
             return
 
+        if self.paused and action == Action.ENTER and not self._digit_buffer:
+            # OK carries on, like the play button.
+            self._toggle_pause()
+            return
+
         handlers = {
             Action.CHANNEL_UP: self._channel_up,
             Action.CHANNEL_DOWN: self._channel_down,
@@ -298,6 +322,9 @@ class TVApp:
             Action.ENTER: self._enter,
             Action.BACK: self.open_menu,
             Action.MENU: self.open_menu,
+            Action.PLAY_PAUSE: self._toggle_pause,
+            Action.FAST_FORWARD: self._fast_forward,
+            Action.REWIND: self._rewind,
         }
         if action == Action.DIGIT:
             self._push_digit(event.value or 0)
@@ -314,13 +341,15 @@ class TVApp:
             return
         self._digit_buffer = ""
         info = self._episode_info.get(self._playing_path) if self._playing_path else None
-        self.menu.open(current_show=info[1] if info else self.lineup.current.name)
+        self.menu.open(current_show=info[0].name if info else self.lineup.current.name)
         self._touch_menu()
         self.overlay.show_menu(self.menu)
 
     def close_menu(self) -> None:
         self.menu.close()
         self.overlay.clear_menu()
+        if self.paused:
+            self._show_pause_card()
 
     def _handle_menu_event(self, event: InputEvent) -> None:
         action = event.action
@@ -332,7 +361,9 @@ class TVApp:
             self.menu.move(1)
         elif action == Action.ENTER:
             choice = self.menu.select()
-            if choice is not None:
+            if choice is not None and choice.kind in (PAIR_REMOTE, PAIR_SEARCH, PAIR_DEVICE):
+                self._pairing_choice(choice)
+            elif choice is not None:
                 self.close_menu()
                 self._play_choice(choice)
                 return
@@ -358,8 +389,50 @@ class TVApp:
         self._menu_deadline = self._clock() + self.config.menu_timeout
 
     def _maybe_close_idle_menu(self, now: float) -> None:
+        if self.menu.is_open and self.pairer.busy:
+            # Never close in the middle of a search or a pairing.
+            self._touch_menu()
+            return
         if self.menu.is_open and self.config.menu_timeout > 0 and now >= self._menu_deadline:
             self.close_menu()
+
+    # -- pairing a Bluetooth remote ------------------------------------------
+    def _pairing_choice(self, choice: Choice) -> None:
+        if choice.kind == PAIR_REMOTE:
+            self.menu.push(
+                Screen("Pair a remote", [], breadcrumb="All shows", kind="pairing")
+            )
+            self.pairer.search()
+        elif choice.kind == PAIR_SEARCH:
+            self.pairer.search()
+        elif choice.kind == PAIR_DEVICE and choice.value:
+            self.pairer.pair(choice.value)
+        self._pairing_version = -1
+        self._refresh_pairing_screen()
+
+    def _refresh_pairing_screen(self) -> None:
+        """Redraw the pairing screen when the search or pairing moves on."""
+        if not self.menu.is_open or self.menu.screen.kind != "pairing":
+            return
+        version = self.pairer.version
+        if version == self._pairing_version:
+            return
+        self._pairing_version = version
+        items = [
+            MenuItem(
+                "Searching..." if self.pairer.busy else "Search for remotes",
+                choice=Choice(PAIR_SEARCH),
+            )
+        ]
+        for device in self.pairer.devices:
+            detail = "connected" if device.connected else "paired" if device.paired else ""
+            items.append(
+                MenuItem(device.name, choice=Choice(PAIR_DEVICE, value=device.address),
+                         detail=detail)
+            )
+        self.menu.set_items(items)
+        self.menu.screen.note = self.pairer.status
+        self.overlay.show_menu(self.menu)
 
     def _play_choice(self, choice: Choice) -> None:
         if choice.kind == SHUFFLE_ALL:
@@ -429,13 +502,13 @@ class TVApp:
                 self.start_mix()
             return
         info = self._episode_info.get(request.path)
-        if info is not None and self.lineup.has_number(info[0]):
+        if info is not None and self.lineup.has_number(info[0].channel_number):
             # Channel up/down from here moves on from this show.
-            self.lineup.select_number(info[0])
+            self.lineup.select_number(info[0].channel_number)
         self.overlay.clear_standby()
         self._play_request(request)
         if banner and info is not None and not self.menu.is_open:
-            self.overlay.show_now_playing(info[1], info[2])
+            self.overlay.show_now_playing(info[0].name, info[1].caption)
 
     # -- channel changing ---------------------------------------------------
     def _channel_up(self) -> None:
@@ -486,6 +559,7 @@ class TVApp:
     def tune_current(self, *, show_static: bool = True) -> None:
         """Tune into the currently selected channel."""
         self.mode = "channel"
+        self._clear_pause()
         channel = self.lineup.current
         self.overlay.clear_standby()
 
@@ -532,12 +606,14 @@ class TVApp:
             self._play_request(request)
 
     def _play_request(self, request: PlayRequest) -> None:
+        self._clear_pause()
         self._playing_path = request.path
         self._arm_stall(request.path)
         self.player.play(request.path, start=request.start)
         self._apply_output_volume()
 
     def _show_no_signal(self, channel: Channel) -> None:
+        self._clear_pause()
         self._switch_deadline = None
         self._pending_banner = None
         self._playing_path = None
@@ -666,11 +742,55 @@ class TVApp:
         self._apply_output_volume()
         self.overlay.show_volume(self.volume, self.muted)
 
+    # -- play / pause, fast-forward, rewind ---------------------------------
+    def _toggle_pause(self) -> None:
+        if self._playing_path is None or self._switch_deadline is not None:
+            return
+        self.paused = not self.paused
+        self.player.set_pause(self.paused)
+        if self.paused:
+            # A paused picture is not a frozen one: stop watching for stalls.
+            self._stall.disarm()
+            self._remember_position()
+            self._show_pause_card()
+        else:
+            self.overlay.clear_pause()
+            self._arm_stall(self._playing_path)
+
+    def _show_pause_card(self) -> None:
+        info = self._episode_info.get(self._playing_path) if self._playing_path else None
+        if info is None:
+            name = self._playing_path.stem if self._playing_path else ""
+            self.overlay.show_paused(name, "", "")
+            return
+        show, episode = info
+        self.overlay.show_paused(show.name, episode.code, episode.name or episode.title)
+
+    def _clear_pause(self) -> None:
+        """A new episode (or standby) always starts unpaused."""
+        if self.paused:
+            self.paused = False
+            self.overlay.clear_pause()
+
+    def _fast_forward(self) -> None:
+        self._skip(self.config.seek_forward_seconds, ">>")
+
+    def _rewind(self) -> None:
+        self._skip(-self.config.seek_back_seconds, "<<")
+
+    def _skip(self, seconds: float, arrows: str) -> None:
+        if self._playing_path is None or self._switch_deadline is not None or seconds == 0:
+            return
+        self.player.seek_relative(seconds)
+        if self._stall.path is not None:
+            self._stall.note_seek(self._clock())
+        self.overlay.show_message(f"{arrows}  {abs(seconds):g} seconds", duration=1.5)
+
     # -- info / standby -----------------------------------------------------
     def _show_info(self) -> None:
         info = self._episode_info.get(self._playing_path) if self._playing_path else None
         if self.mode != "channel" and info is not None:
-            self.overlay.show_now_playing(info[1], info[2])
+            self.overlay.show_now_playing(info[0].name, info[1].caption)
             return
         channel = self.lineup.current
         self.overlay.show_channel_bug(channel.number, channel.name)
@@ -685,6 +805,7 @@ class TVApp:
             self._pending_banner = None
             self._stall.disarm()
             self.menu.close()
+            self._clear_pause()
             self.player.stop()
             self.overlay.clear_all()
             self.overlay.show_standby()
