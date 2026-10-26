@@ -71,13 +71,21 @@ tune_in: random
 # shuffle only.
 order: shuffle
 
-start_channel: 2          # which channel the box powers on to
+# What happens at power-on.
+#   shuffle_all - random episodes from every show, back to back.  [default]
+#   channel     - tune to start_channel, like a TV.
+start_mode: shuffle_all
+start_channel: 2          # the channel used by start_mode: channel
+
+# --- The show menu -----------------------------------------------------------
+# Back (or OK, or Menu) on the remote opens a list of shows, A to Z. Pick a show
+# to play it from the start, shuffle it, or choose a series and an episode.
+# The menu closes by itself after this many seconds without a press (0 = never).
+menu_timeout: 60
 
 # --- The "feel" of the TV ----------------------------------------------------
-# Shows keep their own aspect ratio (4:3 is pillar-boxed, 16:9 fills the screen)
-# and get the CRT curve/rounding. Set force_4_3:true to instead letterbox every
-# show into a single 4:3 frame.
-force_4_3: false
+# Every show keeps its own shape: 4:3 shows get black bars at the sides, 16:9
+# shows fill the screen.
 
 # Start each episode a random number of seconds in, between these two values, so
 # channel switches land at varied points in the show (skips the black leader/
@@ -101,18 +109,13 @@ ui:
   font: "VT323"           # bundled retro terminal font (installed by install.sh)
   color: "#4DFF5A"        # phosphor green for CH banner, volume bar, messages
   dim_color: "#123B18"    # (reserved) colour for unlit elements
-  glow: true              # soft CRT-style glow around the text
+  glow: true              # soft glow around the green text
+  menu_accent: "#E50914"  # the bar behind the highlighted menu row
 
-# --- CRT picture effect (for 4:3 shows on a flat TV) -------------------------
-# Bends the picture like a tube TV: a gentle bulge, rounded corners, a vignette
-# and faint scanlines. Set enabled:false if your Pi struggles or you dislike it.
-crt:
-  enabled: true
-  curvature: 0.12         # 0 = flat, ~0.2 = strongly bulged
-  corner_radius: 0.065    # how rounded the corners are
-  vignette: 0.25          # edge darkening (0-1)
-  scanlines: true
-  scanline_intensity: 0.12
+# --- Video decoding ----------------------------------------------------------
+# auto-safe lets mpv pick hardware decoding. On a Raspberry Pi 3 (including the
+# 3 A+), if H.264 video stutters, try v4l2m2m-copy. "no" decodes on the CPU.
+hwdec: auto-safe
 
 # --- Audio -------------------------------------------------------------------
 # 100 leaves the Pi at full output so the TV's volume buttons (or the TV's own
@@ -168,10 +171,10 @@ input:
 
   # Map specific keys to actions (handy for odd remotes). Find a button's key
   # name with `sudo evtest`. Actions: channel_up, channel_down, volume_up,
-  # volume_down, mute, enter, info, last_channel, power, quit, digit_0..digit_9,
-  # or none (to unbind). Example for a Logitech R400 presenter. NOTE: its
-  # play-screen button sends Escape (the quit key!), so remap KEY_ESC too or it
-  # will shut the box off.
+  # volume_down, mute, enter, back, menu, info, last_channel, power, quit,
+  # digit_0..digit_9, or none (to unbind). In the show menu, channel up/down
+  # move the highlight, enter chooses, and back goes up a level. Escape is
+  # back, not quit. Example for a Logitech R400 presenter:
   # key_overrides:
   #   KEY_PAGEUP: channel_down    # left  (<) arrow
   #   KEY_PAGEDOWN: channel_up    # right (>) arrow

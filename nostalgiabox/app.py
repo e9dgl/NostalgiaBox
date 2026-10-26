@@ -8,6 +8,18 @@ standby/off mode. When an episode ends it automatically rolls into the next one
 on that channel's shuffle, so the box never stops "broadcasting". If the
 picture freezes, a stall watchdog logs the file and recovers.
 
+Playback is in one of three modes:
+
+* ``mix``     - "shuffle everything": random episodes from every show. This is
+  what the box powers on into by default.
+* ``channel`` - one show's channel, flipped to with channel up/down or picked
+  as "Shuffle <show>" in the menu.
+* ``queue``   - a show played in order from a chosen episode (menu "Play from
+  the start", a series, or one episode). When it runs out, the box goes back
+  to shuffling everything.
+
+Back (or OK, or Menu) opens the show menu over whatever is playing.
+
 The class is written to be testable without a display: pass it a
 :class:`~nostalgiabox.player.MockPlayer` and a fake clock and you can single-step
 the whole thing (see ``step`` / ``handle_event`` / ``process_pending``).
@@ -17,16 +29,20 @@ from __future__ import annotations
 
 import logging
 import queue
+import random
 import subprocess
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from .actions import Action, InputEvent
 from .channel import Channel, ChannelLineup, PlayRequest, build_lineup
 from .config import Config
 from .input.manager import InputManager, create_backends
+from .library import build_library
+from .menu import PLAY_QUEUE, SHUFFLE_ALL, SHUFFLE_SHOW, Choice, Menu
 from .overlay import OverlayManager
+from .playlist import ShuffleBag
 from .player import END_EOF, END_ERROR, MockPlayer, Player
 from .stall import PlaybackSample, ProblemLog, Stall, StallWatchdog, problem_directory
 from .volume import resolve_volume_control
@@ -60,6 +76,28 @@ class TVApp:
         self._clock = clock
 
         self.lineup: ChannelLineup = build_lineup(config)
+
+        # The menu and the "shuffle everything" mix both see every show.
+        self.shows = build_library(list(self.lineup))
+        self.menu = Menu(self.shows)
+        self._menu_deadline = 0.0
+        # path -> (channel number, show name, episode title)
+        self._episode_info: Dict[Path, Tuple[int, str, str]] = {
+            ep.path: (show.channel_number, show.name, ep.title)
+            for show in self.shows
+            for ep in show.episodes
+        }
+        rng = random.Random(config.shuffle_seed)
+        self._mix: Optional[ShuffleBag[Path]] = (
+            ShuffleBag(list(self._episode_info), rng) if self._episode_info else None
+        )
+        self._mix_rng = rng
+        # "mix", "channel" or "queue" (see the module docstring).
+        self.mode = "channel"
+        self._queue: List[Path] = []
+        self._queue_index = 0
+        # Where a queued episode was when standby blanked the screen.
+        self._queue_resume = 0.0
 
         # Runtime state. ``volume`` / ``muted`` are the only Pi level. mpv is
         # told this number at startup and again after every file; it is not
@@ -135,15 +173,12 @@ class TVApp:
             if dry_run:
                 player = MockPlayer(verbose=True)
             else:
-                from .crt import write_shader
                 from .player import MpvPlayer
 
                 assets = assets_dir or config.assets_dir or DEFAULT_ASSETS_DIR
-                shader_path = write_shader(config.crt)
                 player = MpvPlayer(
-                    glsl_shaders=str(shader_path) if shader_path else None,
+                    hwdec=config.hwdec,
                     fonts_dir=assets / "fonts",
-                    force_4_3=config.force_4_3,
                     audio_device=config.audio_device,
                 )
 
@@ -158,12 +193,19 @@ class TVApp:
 
     # -- lifecycle ----------------------------------------------------------
     def start(self) -> None:
-        """Power on: set volume, start input, and tune to the first channel."""
+        """Power on: set volume, start input, and start playing.
+
+        By default that is "shuffle everything". ``start_mode: channel`` tunes
+        to ``start_channel`` instead.
+        """
         self._resolve_volume_mode()
         self._apply_output_volume()
         self.input.start()
         self._select_start_channel()
-        self.tune_current(show_static=False)
+        if self.config.start_mode == "shuffle_all" and self._mix is not None:
+            self.start_mix()
+        else:
+            self.tune_current(show_static=False)
 
     def run(self) -> None:
         """Run the blocking main loop until a QUIT action is received."""
@@ -202,6 +244,7 @@ class TVApp:
         self._resolve_volume_mode()
         self._maybe_checkpoint(now)
         self.overlay.tick()
+        self._maybe_close_idle_menu(now)
         self._maybe_commit_switch(now)
         self._maybe_commit_digits(now)
         self._drain_playback_events()
@@ -240,6 +283,10 @@ class TVApp:
         if self.standby:
             return
 
+        if self.menu.is_open:
+            self._handle_menu_event(event)
+            return
+
         handlers = {
             Action.CHANNEL_UP: self._channel_up,
             Action.CHANNEL_DOWN: self._channel_down,
@@ -248,7 +295,9 @@ class TVApp:
             Action.MUTE: self._toggle_mute,
             Action.INFO: self._show_info,
             Action.LAST_CHANNEL: self._jump_last_channel,
-            Action.ENTER: self._confirm_digits,
+            Action.ENTER: self._enter,
+            Action.BACK: self.open_menu,
+            Action.MENU: self.open_menu,
         }
         if action == Action.DIGIT:
             self._push_digit(event.value or 0)
@@ -257,18 +306,155 @@ class TVApp:
             if handler is not None:
                 handler()
 
+    # -- the show menu ------------------------------------------------------
+    def open_menu(self) -> None:
+        """Open the A-Z show list over whatever is playing."""
+        if not self.shows:
+            self.overlay.show_message("NO SHOWS")
+            return
+        self._digit_buffer = ""
+        info = self._episode_info.get(self._playing_path) if self._playing_path else None
+        self.menu.open(current_show=info[1] if info else self.lineup.current.name)
+        self._touch_menu()
+        self.overlay.show_menu(self.menu)
+
+    def close_menu(self) -> None:
+        self.menu.close()
+        self.overlay.clear_menu()
+
+    def _handle_menu_event(self, event: InputEvent) -> None:
+        action = event.action
+        self._touch_menu()
+        if action == Action.CHANNEL_UP:
+            # Up on the remote moves the highlight up the list.
+            self.menu.move(-1)
+        elif action == Action.CHANNEL_DOWN:
+            self.menu.move(1)
+        elif action == Action.ENTER:
+            choice = self.menu.select()
+            if choice is not None:
+                self.close_menu()
+                self._play_choice(choice)
+                return
+        elif action in (Action.BACK, Action.LAST_CHANNEL):
+            self.menu.back()
+        elif action == Action.MENU:
+            self.close_menu()
+            return
+        elif action == Action.VOLUME_UP:
+            self._volume_up()
+        elif action == Action.VOLUME_DOWN:
+            self._volume_down()
+        elif action == Action.MUTE:
+            self._toggle_mute()
+        if not self._running and self.powered_off:
+            return
+        if self.menu.is_open:
+            self.overlay.show_menu(self.menu)
+        else:
+            self.overlay.clear_menu()
+
+    def _touch_menu(self) -> None:
+        self._menu_deadline = self._clock() + self.config.menu_timeout
+
+    def _maybe_close_idle_menu(self, now: float) -> None:
+        if self.menu.is_open and self.config.menu_timeout > 0 and now >= self._menu_deadline:
+            self.close_menu()
+
+    def _play_choice(self, choice: Choice) -> None:
+        if choice.kind == SHUFFLE_ALL:
+            self.start_mix()
+        elif choice.kind == SHUFFLE_SHOW and choice.show is not None:
+            self._leave_mode()
+            self._last_channel_number = self.lineup.current.number
+            self.lineup.select_number(choice.show.channel_number)
+            self.tune_current()
+        elif choice.kind == PLAY_QUEUE and choice.paths:
+            self.play_queue(list(choice.paths), choice.index)
+
+    def _enter(self) -> None:
+        """OK confirms a typed channel number, and otherwise opens the menu."""
+        if self._digit_buffer:
+            self._confirm_digits()
+        else:
+            self.open_menu()
+
+    # -- shuffle everything / play in order ----------------------------------
+    def start_mix(self) -> None:
+        """Random episodes from every show, back to back."""
+        if self._mix is None:
+            return
+        self._leave_mode()
+        self.mode = "mix"
+        self._play_mode_request(self._mix_next(), banner=True)
+
+    def play_queue(self, paths: List[Path], index: int = 0) -> None:
+        """Play ``paths[index]`` from the beginning, then the rest in order."""
+        self._leave_mode()
+        self.mode = "queue"
+        self._queue = list(paths)
+        self._queue_index = max(0, min(index, len(paths) - 1))
+        self._queue_resume = 0.0
+        self._play_mode_request(self._queue_current(), banner=True)
+
+    def _mix_next(self) -> Optional[PlayRequest]:
+        if self._mix is None:
+            return None
+        lo, hi = self.config.start_offset_min, self.config.start_offset_max
+        start = self._mix_rng.uniform(lo, hi) if hi > lo else lo
+        return PlayRequest(self._mix.next(), start=start)
+
+    def _queue_current(self, start: float = 0.0) -> Optional[PlayRequest]:
+        if not self._queue:
+            return None
+        return PlayRequest(self._queue[self._queue_index], start=start)
+
+    def _queue_next(self) -> Optional[PlayRequest]:
+        if self._queue_index + 1 >= len(self._queue):
+            return None
+        self._queue_index += 1
+        return self._queue_current()
+
+    def _leave_mode(self) -> None:
+        """Save the channel's place (if any) before switching what plays."""
+        self._remember_position()
+        self._switch_deadline = None
+        self._pending_banner = None
+
+    def _play_mode_request(self, request: Optional[PlayRequest], *, banner: bool) -> None:
+        """Play a mix or queue episode, keeping the channel lineup in step."""
+        request = self._skip_flagged(request)
+        if request is None:
+            if self.mode == "queue":
+                self.start_mix()
+            return
+        info = self._episode_info.get(request.path)
+        if info is not None and self.lineup.has_number(info[0]):
+            # Channel up/down from here moves on from this show.
+            self.lineup.select_number(info[0])
+        self.overlay.clear_standby()
+        self._play_request(request)
+        if banner and info is not None and not self.menu.is_open:
+            self.overlay.show_now_playing(info[1], info[2])
+
     # -- channel changing ---------------------------------------------------
     def _channel_up(self) -> None:
         self._remember_position()
         self._last_channel_number = self.lineup.current.number
+        self._to_channel_mode()
         self.lineup.up()
         self.tune_current()
 
     def _channel_down(self) -> None:
         self._remember_position()
         self._last_channel_number = self.lineup.current.number
+        self._to_channel_mode()
         self.lineup.down()
         self.tune_current()
+
+    def _to_channel_mode(self) -> None:
+        self.mode = "channel"
+        self._queue = []
 
     def _jump_last_channel(self) -> None:
         if self._last_channel_number is None:
@@ -278,6 +464,7 @@ class TVApp:
             return
         self._remember_position()
         self._last_channel_number = self.lineup.current.number
+        self._to_channel_mode()
         self.lineup.select_number(target)
         self.tune_current()
 
@@ -286,17 +473,19 @@ class TVApp:
         if not self.lineup.has_number(number):
             self.overlay.show_message(f"CH {number:02d}  -  NO CHANNEL")
             return False
-        if number == self.lineup.current.number:
+        if number == self.lineup.current.number and self.mode == "channel":
             self._show_info()
             return True
         self._remember_position()
         self._last_channel_number = self.lineup.current.number
+        self._to_channel_mode()
         self.lineup.select_number(number)
         self.tune_current()
         return True
 
     def tune_current(self, *, show_static: bool = True) -> None:
         """Tune into the currently selected channel."""
+        self.mode = "channel"
         channel = self.lineup.current
         self.overlay.clear_standby()
 
@@ -479,6 +668,10 @@ class TVApp:
 
     # -- info / standby -----------------------------------------------------
     def _show_info(self) -> None:
+        info = self._episode_info.get(self._playing_path) if self._playing_path else None
+        if self.mode != "channel" and info is not None:
+            self.overlay.show_now_playing(info[1], info[2])
+            return
         channel = self.lineup.current
         self.overlay.show_channel_bug(channel.number, channel.name)
 
@@ -486,15 +679,23 @@ class TVApp:
         self.standby = not self.standby
         if self.standby:
             self._remember_position()
+            if self.mode == "queue":
+                self._queue_resume = self.player.get_time_pos() or 0.0
             self._switch_deadline = None
             self._pending_banner = None
             self._stall.disarm()
+            self.menu.close()
             self.player.stop()
             self.overlay.clear_all()
             self.overlay.show_standby()
         else:
             self.overlay.clear_standby()
-            self.tune_current(show_static=False)
+            if self.mode == "mix":
+                self._play_mode_request(self._mix_next(), banner=True)
+            elif self.mode == "queue":
+                self._play_mode_request(self._queue_current(self._queue_resume), banner=True)
+            else:
+                self.tune_current(show_static=False)
 
     # -- direct channel entry ----------------------------------------------
     def _push_digit(self, digit: int) -> None:
@@ -528,6 +729,12 @@ class TVApp:
                 advanced = True
 
     def _advance_current(self) -> None:
+        if self.mode == "mix":
+            self._play_mode_request(self._mix_next(), banner=True)
+            return
+        if self.mode == "queue":
+            self._play_mode_request(self._queue_next(), banner=True)
+            return
         channel = self.lineup.current
         request = self._skip_flagged(channel.advance())
         self._persist_if_in_order(channel)
@@ -535,6 +742,24 @@ class TVApp:
             self._show_no_signal(self.lineup.current)
         else:
             self._play_request(request)
+
+    def _mode_advance(self) -> Optional[PlayRequest]:
+        """The next pick in the current mode, for skipping a flagged file."""
+        if self.mode == "mix":
+            return self._mix_next()
+        if self.mode == "queue":
+            return self._queue_next()
+        channel = self.lineup.current
+        request = channel.advance()
+        self._persist_if_in_order(channel)
+        return request
+
+    def _mode_size(self) -> int:
+        if self.mode == "mix":
+            return len(self._episode_info)
+        if self.mode == "queue":
+            return len(self._queue)
+        return len(self.lineup.current.episodes)
 
     # -- frozen picture -----------------------------------------------------
     def _arm_stall(self, path: Optional[Path]) -> None:
@@ -544,7 +769,11 @@ class TVApp:
         self._stall.arm(path, self._clock())
 
     def _channel_label(self) -> str:
+        if self.mode == "mix":
+            return "shuffle everything"
         channel = self.lineup.current
+        if self.mode == "queue":
+            return f"{channel.name} in order"
         return f"channel {channel.number} {channel.name}"
 
     def _skip_flagged(self, request: Optional[PlayRequest]) -> Optional[PlayRequest]:
@@ -556,10 +785,9 @@ class TVApp:
         """
         if request is None or not self.config.stall_watch:
             return request
-        channel = self.lineup.current
         label = self._channel_label()
         seen: set[Path] = set()
-        limit = max(1, len(channel.episodes))
+        limit = max(1, self._mode_size())
         while request is not None and self._problems.is_flagged(request.path):
             if request.path in seen or len(seen) >= limit:
                 self._problems.write(
@@ -576,8 +804,7 @@ class TVApp:
                 "flagged from earlier freezes; skipping",
                 label,
             )
-            request = channel.advance()
-            self._persist_if_in_order(channel)
+            request = self._mode_advance()
         return request
 
     def _watch_for_stall(self, now: float) -> None:
@@ -636,6 +863,8 @@ class TVApp:
 
     # -- helpers ------------------------------------------------------------
     def _remember_position(self) -> None:
+        if self.mode != "channel":
+            return
         channel = self.lineup.current
         in_order = channel.config.order == "in_order" and channel.tune_in_mode != "broadcast"
         if self.config.tune_in != "resume" and not in_order:
@@ -653,6 +882,8 @@ class TVApp:
         if now < self._next_progress_save:
             return
         self._next_progress_save = now + 5.0
+        if self.mode != "channel":
+            return
         channel = self.lineup.current
         if channel.config.order != "in_order" or channel.tune_in_mode == "broadcast":
             return

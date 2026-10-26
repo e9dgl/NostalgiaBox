@@ -1,13 +1,16 @@
 """On-screen display: the green digital channel banner, volume bar, and messages.
 
 These are drawn to look like a late-90s/early-2000s TV's on-screen display: a
-chunky phosphor-green readout in a retro terminal font, with a soft CRT glow.
-Two signature elements:
+chunky phosphor-green readout in a retro terminal font. Two signature elements:
 
 * the **channel banner** ("CH 03" + the show name) that flashes top-right when
   you change channels, and
 * the **volume bar** - a row of solid green bars for the current level followed
   by green dots for the rest, with a "Volume" label - matching a classic TV OSD.
+
+On top of that sits the modern half: a **show menu** (a dark panel listing
+shows, series and episodes, with the highlighted row in a solid accent bar) and
+a **now playing** caption naming the show and episode.
 
 Everything is rendered as ASS overlays on a fixed 1280x720 virtual canvas (mpv
 scales it to the TV) and cleared automatically after a few seconds by
@@ -17,29 +20,30 @@ scales it to the TV) and cleared automatically after a few seconds by
 from __future__ import annotations
 
 import time
-from typing import Callable, Dict, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Optional
 
 from .config import Config, UiConfig
 from .player import Player
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .menu import Menu
 
 # Virtual canvas the overlays are laid out on. This maps to the WHOLE display
 # (a 16:9 TV), so mpv scales it to whatever the screen is.
 CANVAS_W = 1280
 CANVAS_H = 720
 
-# The video is forced into a 4:3 frame centred on the 16:9 canvas (see
-# MpvPlayer.force_4_3). We lay the OSD out *inside* that 4:3 frame - with a small
-# safe-area inset so nothing sits under the CRT's rounded corners - so the green
-# readouts always sit over the picture, never out in the black pillarbox bars.
-_FRAME_W = int(round(CANVAS_H * 4 / 3))        # 960
-_FRAME_X0 = (CANVAS_W - _FRAME_W) // 2          # 160
-_FRAME_X1 = _FRAME_X0 + _FRAME_W                # 1120
-_FRAME_CX = (_FRAME_X0 + _FRAME_X1) // 2        # 640
-_SAFE = 0.06
-_IX0 = _FRAME_X0 + int(_FRAME_W * _SAFE)        # ~217  (left safe edge)
-_IX1 = _FRAME_X1 - int(_FRAME_W * _SAFE)        # ~1062 (right safe edge)
-_IY0 = int(CANVAS_H * _SAFE)                     # ~43   (top safe edge)
-_IY1 = CANVAS_H - int(CANVAS_H * _SAFE)          # ~677  (bottom safe edge)
+# Overlays sit inside a title-safe area of the full 16:9 picture, so nothing
+# is lost on a TV that overscans the edges.
+_FRAME_W = CANVAS_W
+_FRAME_X0 = 0
+_FRAME_X1 = CANVAS_W
+_FRAME_CX = CANVAS_W // 2
+_SAFE = 0.05
+_IX0 = int(CANVAS_W * _SAFE)                     # 64   (left safe edge)
+_IX1 = CANVAS_W - int(CANVAS_W * _SAFE)          # 1216 (right safe edge)
+_IY0 = int(CANVAS_H * _SAFE)                     # 36   (top safe edge)
+_IY1 = CANVAS_H - int(CANVAS_H * _SAFE)          # 684  (bottom safe edge)
 
 # Overlay slots (ids). Each kind of overlay owns one id so it can be replaced
 # or cleared independently.
@@ -47,6 +51,11 @@ _ID_CHANNEL = 1
 _ID_VOLUME = 2
 _ID_STANDBY = 3
 _ID_MESSAGE = 4
+_ID_MENU = 5
+_ID_NOW_PLAYING = 6
+
+# How many menu rows fit on screen at once.
+MENU_ROWS = 8
 
 _BLACK = "&H00000000"
 
@@ -92,6 +101,28 @@ class OverlayManager:
         self._player.set_overlay(_ID_MESSAGE, ass, CANVAS_W, CANVAS_H)
         self._arm(_ID_MESSAGE, dur)
 
+    def show_now_playing(
+        self, show: str, episode: str, *, duration: Optional[float] = None
+    ) -> None:
+        """Show name and episode, bottom-left, when an episode starts."""
+        dur = self._config.channel_bug_seconds if duration is None else duration
+        ass = _now_playing_ass(show, episode, self._ui)
+        self._player.set_overlay(_ID_NOW_PLAYING, ass, CANVAS_W, CANVAS_H)
+        self._arm(_ID_NOW_PLAYING, dur)
+
+    def show_menu(self, menu: "Menu") -> None:
+        """Draw (or redraw) the show menu. It stays until :meth:`clear_menu`."""
+        self._player.clear_overlay(_ID_CHANNEL)
+        self._player.clear_overlay(_ID_NOW_PLAYING)
+        self._expiry.pop(_ID_CHANNEL, None)
+        self._expiry.pop(_ID_NOW_PLAYING, None)
+        self._player.set_overlay(_ID_MENU, _menu_ass(menu, self._ui), CANVAS_W, CANVAS_H)
+        self._expiry.pop(_ID_MENU, None)
+
+    def clear_menu(self) -> None:
+        self._player.clear_overlay(_ID_MENU)
+        self._expiry.pop(_ID_MENU, None)
+
     def show_standby(self) -> None:
         """Persistent 'standby' notice for when the box is 'off'."""
         ass = _standby_ass(self._ui)
@@ -111,7 +142,9 @@ class OverlayManager:
                 self._expiry.pop(overlay_id, None)
 
     def clear_all(self) -> None:
-        for overlay_id in (_ID_CHANNEL, _ID_VOLUME, _ID_STANDBY, _ID_MESSAGE):
+        for overlay_id in (
+            _ID_CHANNEL, _ID_VOLUME, _ID_STANDBY, _ID_MESSAGE, _ID_MENU, _ID_NOW_PLAYING,
+        ):
             self._player.clear_overlay(overlay_id)
         self._expiry.clear()
 
@@ -172,7 +205,7 @@ def _volume_ass(level: int, muted: bool, ui: UiConfig) -> str:
     pitch = 38
     bar_h = 48
     total_w = (segments - 1) * pitch + bar_w
-    x0 = _FRAME_CX - total_w // 2          # centre the bar within the 4:3 frame
+    x0 = _FRAME_CX - total_w // 2          # centre the bar on the screen
     row_top = _IY1 - bar_h                  # sit just above the bottom safe edge
     dot_r = 6
     green = _hex_to_ass(ui.color)
@@ -200,6 +233,102 @@ def _message_ass(text: str, ui: UiConfig) -> str:
 
 def _standby_ass(ui: UiConfig) -> str:
     return rf"{{\an5\pos({_FRAME_CX},{CANVAS_H // 2}){_style(ui, size=72)}}}STANDBY"
+
+
+def _plain(ui: UiConfig, *, size: int, color: str, bold: bool = False) -> str:
+    """Menu text: the retro font, no glow, a thin dark edge for legibility."""
+    return (
+        rf"\fn{ui.font}\b{1 if bold else 0}\fs{size}\c{_hex_to_ass(color)}"
+        rf"\1a&H00&\bord1\3c{_BLACK}\shad0"
+    )
+
+
+def _now_playing_ass(show: str, episode: str, ui: UiConfig) -> str:
+    """'Now playing' caption: show name over episode title, bottom-left."""
+    x = _IX0
+    show, episode = _clip(show, 40), _clip(episode, 60)
+    # A dark band behind the text keeps it readable over bright cartoons.
+    # VT323 is narrow: about a third of its point size per character.
+    width = max(len(show) * 17, len(episode) * 11) + 56
+    band = (
+        rf"{{\an7\pos({x - 24},{_IY1 - 112})\p1\c{_BLACK}\1a&H40&\bord0\shad0}}"
+        rf"m 0 0 l {width} 0 l {width} 124 l 0 124{{\p0}}"
+    )
+    title = rf"{{\an1\pos({x},{_IY1 - 44}){_style(ui, size=52)}}}{_escape(show)}"
+    sub = rf"{{\an1\pos({x},{_IY1}){_plain(ui, size=34, color='#FFFFFF')}}}{_escape(episode)}"
+    return "\n".join([band, title, sub])
+
+
+def _menu_ass(menu: "Menu", ui: UiConfig) -> str:
+    """The show menu: a dark panel on the left, one highlighted row."""
+    screen = menu.screen
+    panel_w = 720
+    x = _IX0
+    row_h = 54
+    top = 176
+    accent = _hex_to_ass(ui.menu_accent)
+    parts = [
+        # Panel: mostly opaque black, so the show keeps playing faintly behind.
+        rf"{{\an7\pos(0,0)\p1\c{_BLACK}\1a&H18&\bord0\shad0}}"
+        rf"m 0 0 l {panel_w} 0 l {panel_w} {CANVAS_H} l 0 {CANVAS_H}{{\p0}}",
+    ]
+    if screen.breadcrumb:
+        parts.append(
+            rf"{{\an7\pos({x},{_IY0 + 8}){_plain(ui, size=30, color='#9A9A9A')}}}"
+            rf"{_escape(_clip(screen.breadcrumb, 40))}  >"
+        )
+    parts.append(
+        rf"{{\an7\pos({x},{_IY0 + 44}){_style(ui, size=60)}}}{_escape(_clip(screen.title, 26))}"
+    )
+
+    first, rows = menu.visible(MENU_ROWS)
+    for offset, item in enumerate(rows):
+        index = first + offset
+        y = top + offset * row_h
+        selected = index == screen.cursor
+        if selected:
+            parts.append(
+                _filled_rect(x=x - 16, y=y - 4, w=panel_w - x - 24, h=row_h - 6, fill=accent)
+            )
+        color = "#FFFFFF" if selected else "#C8C8C8"
+        arrow = "  >" if item.opens is not None else ""
+        parts.append(
+            rf"{{\an7\pos({x},{y}){_plain(ui, size=40, color=color, bold=selected)}}}"
+            rf"{_escape(_clip(item.label, 34))}{arrow}"
+        )
+        if item.detail:
+            parts.append(
+                rf"{{\an9\pos({panel_w - 56},{y + 8}){_plain(ui, size=28, color='#9A9A9A')}}}"
+                rf"{_escape(item.detail)}"
+            )
+
+    count = len(screen.items)
+    if first > 0:
+        parts.append(_triangle(cx=panel_w // 2, cy=top - 22, up=True, fill=accent))
+    if first + len(rows) < count:
+        parts.append(
+            _triangle(cx=panel_w // 2, cy=top + MENU_ROWS * row_h + 6, up=False, fill=accent)
+        )
+    hint = "OK  choose      BACK  go back" if menu.depth > 1 else "OK  choose      BACK  close"
+    parts.append(
+        rf"{{\an1\pos({x},{_IY1}){_plain(ui, size=28, color='#9A9A9A')}}}{hint}"
+    )
+    return "\n".join(parts)
+
+
+def _triangle(*, cx: float, cy: float, up: bool, fill: str, size: int = 14) -> str:
+    """A small arrow showing the list scrolls further that way."""
+    x, y = round(cx), round(cy)
+    if up:
+        draw = f"m 0 {-size} l {size} {size // 2} l {-size} {size // 2}"
+    else:
+        draw = f"m 0 {size} l {size} {-size // 2} l {-size} {-size // 2}"
+    return rf"{{\an7\pos({x},{y})\p1\c{fill}\1a&H00&\bord0\shad0}}{draw}{{\p0}}"
+
+
+def _clip(text: str, limit: int) -> str:
+    """Shorten long names so a row never runs off the panel."""
+    return text if len(text) <= limit else text[: limit - 2].rstrip() + ".."
 
 
 def _filled_rect(*, x: float, y: float, w: float, h: float, fill: str) -> str:
@@ -231,4 +360,4 @@ def _escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("{", "(").replace("}", ")")
 
 
-__all__ = ["OverlayManager", "CANVAS_W", "CANVAS_H"]
+__all__ = ["OverlayManager", "CANVAS_W", "CANVAS_H", "MENU_ROWS"]

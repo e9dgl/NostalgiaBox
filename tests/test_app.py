@@ -17,6 +17,7 @@ def build_app(tmp_path, *, assets_dir=None, **overrides):
         "start_channel": 2,
         "start_offset": 0,  # keep test assertions on start=0 unless overridden
         "power_off_command": [],  # no-op in tests (never actually shut down)
+        "start_mode": "channel",  # most tests drive the channel lineup
         "channels": [
             {"number": 2, "name": "Dragon Tales", "path": str(tmp_path / "dragon")},
             {"number": 3, "name": "Arthur", "path": str(tmp_path / "arthur")},
@@ -261,7 +262,8 @@ def test_empty_channel_shows_no_signal(tmp_path):
             "channels": [
                 {"number": 2, "name": "Dragon Tales", "path": str(tmp_path / "dragon")},
                 {"number": 3, "name": "Arthur", "path": str(tmp_path / "arthur")},
-            ]
+            ],
+            "start_mode": "channel",
         }
     )
     app = TVApp(config, MockPlayer(), InputManager([]), clock=FakeClock())

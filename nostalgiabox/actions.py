@@ -27,6 +27,8 @@ class Action(Enum):
     INFO = auto()           # re-show the channel banner
     LAST_CHANNEL = auto()   # jump back to the previously watched channel
     POWER = auto()          # toggle standby (blank screen)
+    BACK = auto()           # open the show menu, or go up one level in it
+    MENU = auto()           # open or close the show menu
     QUIT = auto()           # shut the application down entirely
 
 

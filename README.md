@@ -1,17 +1,19 @@
 # NostalgiaBox
 
-**Turn a Raspberry Pi into a retro TV for your kids.**
+**Turn a Raspberry Pi into an offline nostalgia box: part 90s TV, part Netflix.**
 
-NostalgiaBox plays folders of old children's shows as if they were real TV
-**channels**. Flip to a channel and a show is already playing (starting a few
-seconds in, like you just tuned in); when an episode ends, the next one rolls
-automatically on an endless shuffle. Shuffle is the default. Playing a series
-in episode order is covered in
-[How episodes are picked](#how-episodes-are-picked-and-playing-a-series-in-order).
-The box boots straight to the TV on power-up, is
-driven by a simple remote, sends audio over HDMI, and has an authentic
-early-2000s vibe — a green on-screen channel banner and volume bar, and a curved
-"CRT" picture. No menus, no apps, no touchscreens. Just a remote and channels.
+Plug it in and it is already playing: a random episode from your whole
+collection, then another, on an endless shuffle across every show. When you
+want something in particular, press **Back** on the remote. A menu lists every
+show from A to Z. Open one to play it from the start, shuffle just that show,
+or pick a series and an episode. Whatever you pick carries on in order through
+the rest of the show.
+
+Channel up and down still flip through the shows like TV channels (each folder
+of episodes is a channel). The box boots straight to the TV, needs no internet
+once it is set up, sends audio over HDMI, and keeps an early-2000s feel with a
+green on-screen channel banner and volume bar. Shows keep their own shape: 4:3
+cartoons get black bars at the sides, widescreen shows fill the screen.
 
 Follow the steps in order. Each step says **which machine** to use, the
 **exact command** to copy, and **what you should see** when it worked.
@@ -56,7 +58,7 @@ Everything you need to build one:
 
 | Part | Link | What it's for |
 |------|------|---------------|
-| **Raspberry Pi 4 Model B** | https://amzn.to/4w6HcSC | The "brain" of the box (2GB RAM or more is plenty) |
+| **Raspberry Pi 4 Model B** | https://amzn.to/4w6HcSC | The "brain" of the box (2GB RAM or more is plenty). A Raspberry Pi 3 Model A+ also works; see [Using a Raspberry Pi 3 A+](#using-a-raspberry-pi-3-a) |
 | **Flirc USB Remote Adapter** | https://amzn.to/4h7hZ5O | Plugs into the Pi and lets **any** remote control it |
 | **Simple TV Remote** | https://amzn.to/4wId7bZ | The big-button remote your kids will actually use |
 | **Micro-HDMI → Full HDMI cable** | https://amzn.to/4pn1TXS | Connects the Pi to the TV (the Pi 4 uses micro-HDMI) |
@@ -73,6 +75,25 @@ Everything you need to build one:
 - Optional: a **USB drive** (flash drive or portable hard drive) if you want
   the videos somewhere other than the SD card. Format it as **exFAT** so files
   larger than 4 GB work on Mac, Windows, and the Pi.
+
+### Using a Raspberry Pi 3 A+
+
+The Pi 3 Model A+ is smaller and cheaper, and it runs NostalgiaBox. Know these
+differences before you buy:
+
+- **One USB port.** The Flirc takes it. Keep the shows on the SD card (buy a
+  64 GB or larger card), or add a small **powered USB hub** for the Flirc and a
+  USB drive.
+- **512 MB of memory.** Enough for one video at a time. Use Raspberry Pi OS
+  Lite, as step 2 says.
+- **H.264 video only.** The Pi 3 decodes H.264 (`.mp4`) in hardware, up to
+  1080p. It cannot decode H.265/HEVC in hardware, so those files stutter.
+  720p H.264 is the safe choice. If H.264 still stutters, add
+  `hwdec: v4l2m2m-copy` to `config.yaml`.
+- **Full-size HDMI.** Use a normal HDMI cable, not micro-HDMI.
+- **No Ethernet port.** Setup uses Wi-Fi.
+- **Power:** a 5V 2.5A micro-USB supply (the official Pi 3 one).
+- In Raspberry Pi Imager (step 2), choose **Raspberry Pi 3** as the device.
 
 ---
 
@@ -109,7 +130,8 @@ Everything you need to build one:
 2. Plug the **Flirc** adapter into a USB port on the Pi. (You will unplug it
    in step 8 to program the remote, then plug it back in.)
 3. Connect the **micro-HDMI → HDMI** cable from the Pi to the TV. On a Pi 4,
-   use the micro-HDMI port **next to the USB-C power plug**.
+   use the micro-HDMI port **next to the USB-C power plug**. A Pi 3 A+ has one
+   full-size HDMI port and uses a normal HDMI cable.
 4. Insert the SD card.
 5. Plug in power. Wait about a minute. The TV may stay black. That is normal
    for Raspberry Pi OS Lite — there is no desktop.
@@ -351,10 +373,15 @@ its buttons into keys NostalgiaBox already understands.
    | **Left arrow** | Volume down | Quieter |
    | **m** | Mute | Mute |
    | **p** | Power | Blank the screen (standby) |
+   | **Enter** | OK | Open the show menu, and choose in it |
+   | **Backspace** | Back | Open the show menu, and go back in it |
+
+   If your remote has no OK or Back button, use any two spare buttons.
 
 5. Unplug the Flirc from your computer and plug it back into the Pi.
 
-**What you should see:** channel buttons change the channel. Volume buttons
+**What you should see:** Back opens the show menu, and channel up/down move
+up and down the list inside it. Outside the menu, channel buttons change the channel. Volume buttons
 change the television's own volume when HDMI-CEC works, and the Pi's volume
 otherwise. See [Volume](#volume). No config edit is required for this layout.
 Flirc has no separate CEC mode — this Full Keyboard layout is the whole remote
@@ -378,6 +405,7 @@ nostalgiabox --list-audio
 
 On a Pi 4, the HDMI port next to the USB-C power plug is `vc4hdmi0`. The other
 micro-HDMI port is `vc4hdmi1`. Use the one that matches the cable from step 3.
+A Pi 3 has a single HDMI port, usually listed as `vc4hdmi`.
 
 **On the Pi**, open the settings file:
 
@@ -435,6 +463,7 @@ it again.
 
 | Do this | On the remote |
 |---------|---------------|
+| Pick a show or an episode | **Back** (or OK) opens the menu. Up / down to move, OK to choose, Back to go back |
 | Change channels | Channel up / down |
 | Adjust volume | Volume up / down (the TV, when HDMI-CEC works) |
 | Mute | Mute |
@@ -448,6 +477,49 @@ channel starts an episode. If a brand-new show folder does not appear, run:
 ```bash
 sudo systemctl restart nostalgiabox
 ```
+
+---
+
+## The show menu
+
+Press **Back**, **OK**, or a **Menu** button while something is playing. The
+show keeps playing behind the menu.
+
+1. **All shows**, A to Z ("The" is ignored, so *The Raccoons* sits under R).
+   The first line is **Shuffle everything**, which is what the box does when
+   it powers on.
+2. **One show.** **Play from the start**, **Shuffle** that show, then:
+   - a show with one series lists its episodes straight away;
+   - a show with several series lists **Series 1**, **Series 2**, and so on.
+     Open one for **Play Series 2 from the start** and its episodes.
+3. Choosing an episode plays it from the beginning and carries on in order:
+   the rest of that series, then the next series. At the end of the show the
+   box goes back to shuffling everything.
+
+Up and down move the highlight, OK chooses, and Back goes up a level (Back at
+the top closes the menu). The menu also closes after 60 seconds without a
+press (`menu_timeout`).
+
+**How series are found.** Each sub-folder of a show is a series, in number
+order (`Season 1/`, `Season 2/`, `Season 10/`; a folder like `Specials/` goes
+last). A show with no sub-folders is split by the season in its file names
+(`S02E05`, `2x05`, `Season 2`). A show with neither is a single series.
+Episode names come from the file names, with the show's own name left off the
+front: `Arthur - S01E02 - Arthur's Eyes.mp4` shows as `S01E02 - Arthur's Eyes`.
+
+```text
+Pingu/                      one series: the menu lists the episodes
+  Pingu 01.mp4
+  Pingu 02.mp4
+The Raccoons/               several series: the menu lists Series 1, Series 2
+  Season 1/
+    S01E01.mp4
+  Season 2/
+    S02E01.mp4
+```
+
+To power on into a channel instead of shuffling everything, set
+`start_mode: channel` (and `start_channel`) in `config.yaml`.
 
 ---
 
@@ -792,6 +864,9 @@ media_root: /media/nostalgiabox
 usb_media_root: /media/nostalgiabox-usb
 prefer_usb: true             # a USB drive with videos wins over the SD folder
 first_channel_number: 2
+start_mode: shuffle_all      # shuffle_all | channel   (what plays at power-on)
+menu_timeout: 60             # seconds before an untouched menu closes; 0 = never
+hwdec: auto-safe             # try v4l2m2m-copy on a Pi 3 if H.264 stutters
 tune_in: random              # random | resume | broadcast
 order: shuffle               # shuffle | in_order   (shuffle: false = in_order)
 start_channel: 2
@@ -829,13 +904,14 @@ nostalgiabox/
 ├── playback_state.py  saved place for in-order channels
 ├── stall.py       frozen-picture watchdog and the problem-file log
 ├── channel.py     folder scanning, tune-in modes, channel navigation
+├── library.py     shows -> series -> episodes, A to Z, for the menu
+├── menu.py        the show menu (screens, highlight, what OK plays)
 ├── player.py      mpv player (+ a mock for tests)
 ├── volume.py      TV vs Pi volume mode
-├── overlay.py     the green on-screen display
-├── crt.py         the CRT shader
+├── overlay.py     the green on-screen display, the menu, "now playing"
 ├── input/         remote input (Flirc/keyboard, HDMI-CEC, keymap)
 ├── static_gen.py  ffmpeg-generated static/glitch/colour-bar clips
-└── app.py         the TV state machine
+└── app.py         the TV state machine (shuffle everything, channels, in-order play)
 ```
 
 ## License

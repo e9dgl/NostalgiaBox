@@ -68,6 +68,11 @@ TRANSITION_EFFECTS = ("glitch", "static", "none")
 #   in_order  - filename order (natural sort), then loop. The place is saved.
 ORDER_MODES = ("shuffle", "in_order")
 
+# What the box does when it powers on.
+#   shuffle_all - random episodes from every show, back to back.  [default]
+#   channel     - tune to start_channel, like the original NostalgiaBox.
+START_MODES = ("shuffle_all", "channel")
+
 # An empty file with this name in a show folder plays that show in order
 # without a config edit. It only opts in. It does not turn shuffle back on.
 INORDER_MARKER = ".inorder"
@@ -80,19 +85,8 @@ class UiConfig:
     font: str = "VT323"             # bundled retro terminal font (OFL)
     color: str = "#4DFF5A"          # bright CRT phosphor green
     dim_color: str = "#123B18"      # unlit volume segment / dot colour
-    glow: bool = True               # soft glow around text for that CRT bloom
-
-
-@dataclass(frozen=True)
-class CrtConfig:
-    """The CRT picture effect applied to the 4:3 video via a GLSL shader."""
-
-    enabled: bool = True
-    curvature: float = 0.12         # barrel "bulge" amount (0 = perfectly flat)
-    corner_radius: float = 0.065    # rounded-corner size (fraction of screen)
-    vignette: float = 0.25          # darkening toward the edges
-    scanlines: bool = True
-    scanline_intensity: float = 0.12
+    glow: bool = True               # soft glow around the green text
+    menu_accent: str = "#E50914"    # highlight bar behind the chosen menu row
 
 
 @dataclass(frozen=True)
@@ -134,10 +128,13 @@ class Config:
     # default. ``shuffle: false`` in YAML is the same as ``order: in_order``.
     order: str = "shuffle"
     start_channel: Optional[int] = None
+    # Power on into "shuffle everything" or a channel (see START_MODES).
+    start_mode: str = "shuffle_all"
+    # Close the show menu after this many seconds without a button press.
+    # 0 keeps it open until Back.
+    menu_timeout: float = 60.0
 
     # Presentation / "feel" of the TV.
-    force_4_3: bool = False                # if true, letterbox everything to 4:3;
-                                          #   default keeps each show's own aspect
     # Start each episode a random number of seconds in (between min and max), so
     # channel switches land at varied points in the show.
     start_offset_min: float = 6.0
@@ -151,7 +148,9 @@ class Config:
     channel_bug_seconds: float = 4.0      # how long the channel banner lingers
     osd_duration: float = 2.0             # how long volume/message overlays linger
     ui: UiConfig = field(default_factory=UiConfig)
-    crt: CrtConfig = field(default_factory=CrtConfig)
+    # mpv hardware decoding. auto-safe suits a Pi 4; a Pi 3 can use
+    # v4l2m2m-copy for H.264. "no" decodes on the CPU.
+    hwdec: str = "auto-safe"
 
     # Audio.
     # 100 keeps the Pi at unity so the TV's own volume is the real knob.
@@ -503,6 +502,9 @@ def config_from_dict(data: Dict[str, Any], *, base_dir: Optional[Path] = None) -
 
     start_channel = data.get("start_channel")
     start_channel = int(start_channel) if start_channel is not None else None
+    start_mode = str(data.get("start_mode", "shuffle_all")).strip().lower()
+    if start_mode not in START_MODES:
+        raise ConfigError(f"'start_mode' must be one of {START_MODES}, got '{start_mode}'")
 
     initial_volume = _clamp_int(data.get("initial_volume", 100), 0, 100, "initial_volume")
     volume_step = _clamp_int(data.get("volume_step", 5), 1, 100, "volume_step")
@@ -528,7 +530,8 @@ def config_from_dict(data: Dict[str, Any], *, base_dir: Optional[Path] = None) -
         tune_in=tune_in,
         order=default_order,
         start_channel=start_channel,
-        force_4_3=bool(data.get("force_4_3", False)),
+        start_mode=start_mode,
+        menu_timeout=_clamp_float(data.get("menu_timeout", 60.0), 0.0, 3600.0, "menu_timeout"),
         start_offset_min=_offset_range(data)[0],
         start_offset_max=_offset_range(data)[1],
         transition_effect=_valid_transition(data.get("transition", "none")),
@@ -537,7 +540,7 @@ def config_from_dict(data: Dict[str, Any], *, base_dir: Optional[Path] = None) -
         channel_bug_seconds=_clamp_float(data.get("channel_bug_seconds", 4.0), 0.0, 60.0, "channel_bug_seconds"),
         osd_duration=_clamp_float(data.get("osd_duration", 2.0), 0.0, 60.0, "osd_duration"),
         ui=_parse_ui(data.get("ui")),
-        crt=_parse_crt(data.get("crt")),
+        hwdec=str(data.get("hwdec") or "auto-safe"),
         initial_volume=initial_volume,
         volume_step=volume_step,
         volume_control=volume_control,
@@ -589,24 +592,7 @@ def _parse_ui(raw: Any) -> UiConfig:
         color=_valid_color(raw.get("color", defaults.color), "ui.color"),
         dim_color=_valid_color(raw.get("dim_color", defaults.dim_color), "ui.dim_color"),
         glow=bool(raw.get("glow", defaults.glow)),
-    )
-
-
-def _parse_crt(raw: Any) -> CrtConfig:
-    if raw is None:
-        return CrtConfig()
-    if not isinstance(raw, dict):
-        raise ConfigError("'crt' must be a mapping")
-    d = CrtConfig()
-    return CrtConfig(
-        enabled=bool(raw.get("enabled", d.enabled)),
-        curvature=_clamp_float(raw.get("curvature", d.curvature), 0.0, 0.5, "crt.curvature"),
-        corner_radius=_clamp_float(raw.get("corner_radius", d.corner_radius), 0.0, 0.3, "crt.corner_radius"),
-        vignette=_clamp_float(raw.get("vignette", d.vignette), 0.0, 1.0, "crt.vignette"),
-        scanlines=bool(raw.get("scanlines", d.scanlines)),
-        scanline_intensity=_clamp_float(
-            raw.get("scanline_intensity", d.scanline_intensity), 0.0, 1.0, "crt.scanline_intensity"
-        ),
+        menu_accent=_valid_color(raw.get("menu_accent", defaults.menu_accent), "ui.menu_accent"),
     )
 
 
@@ -679,7 +665,6 @@ __all__ = [
     "Config",
     "ChannelConfig",
     "UiConfig",
-    "CrtConfig",
     "ConfigError",
     "load_config",
     "config_from_dict",
@@ -693,6 +678,7 @@ __all__ = [
     "TUNE_IN_MODES",
     "TRANSITION_EFFECTS",
     "ORDER_MODES",
+    "START_MODES",
     "INORDER_MARKER",
     "VOLUME_CONTROLS",
 ]

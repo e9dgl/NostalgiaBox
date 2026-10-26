@@ -147,8 +147,6 @@ def build_mpv_options(
     *,
     fullscreen: bool = True,
     hwdec: str = "auto-safe",
-    glsl_shaders: Optional[str] = None,
-    force_4_3: bool = True,
     audio_device: Optional[str] = None,
     extra_options: Optional[dict] = None,
 ) -> dict:
@@ -181,9 +179,9 @@ def build_mpv_options(
         prefetch_playlist="yes",
         fullscreen=fullscreen,
         # Hardware decode + a sensible video output for the Pi. gpu with the
-        # drm context works headless on the Pi 4; libmpv falls back sanely.
+        # drm context works headless on the Pi; libmpv falls back sanely.
         hwdec=hwdec,
-        # 4:3 shows should be pillarboxed (not stretched) inside the frame.
+        # Every show keeps its own shape: 4:3 is pillarboxed, 16:9 fills.
         keepaspect="yes",
         video_unscaled="no",
         # Hide the mouse cursor - this is a TV, not a computer.
@@ -196,20 +194,6 @@ def build_mpv_options(
         # Force audio to a specific output (e.g. HDMI) instead of mpv's
         # default (which can pick the 3.5mm jack on a Raspberry Pi).
         options["audio_device"] = audio_device
-    if glsl_shaders:
-        # CRT curvature/rounding/vignette/scanlines. Applied globally (always
-        # on) so a newly-loaded episode is never shown for a frame or two
-        # without the effect on a channel change.
-        options["glsl_shaders"] = glsl_shaders
-    if force_4_3:
-        # Fit ANY source into a 4:3 raster (letterboxing 16:9 with black
-        # bars), so every show - and the static/colour-bar clips - appears in
-        # the same 4:3 tube-TV frame. mpv then pillarboxes that 4:3 image on
-        # a 16:9 TV, and the CRT shader curves it.
-        options["vf"] = (
-            "lavfi=[scale=960:720:force_original_aspect_ratio=decrease,"
-            "pad=960:720:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1]"
-        )
     if extra_options:
         options.update(extra_options)
     return options
@@ -223,9 +207,7 @@ class MpvPlayer(Player):
         *,
         fullscreen: bool = True,
         hwdec: str = "auto-safe",
-        glsl_shaders: Optional[str] = None,
         fonts_dir: Optional[Path] = None,
-        force_4_3: bool = True,
         audio_device: Optional[str] = None,
         extra_options: Optional[dict] = None,
     ) -> None:
@@ -245,8 +227,6 @@ class MpvPlayer(Player):
         options = build_mpv_options(
             fullscreen=fullscreen,
             hwdec=hwdec,
-            glsl_shaders=glsl_shaders,
-            force_4_3=force_4_3,
             audio_device=audio_device,
             extra_options=extra_options,
         )

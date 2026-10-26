@@ -2,7 +2,8 @@
 
 This backend has nothing to do with the Pi/TV; it exists so you can drive the
 whole application from a terminal while developing - arrow keys, digits, ``+``/
-``-`` for volume, ``m`` to mute, ``i`` for info, ``q`` to quit. It puts the
+``-`` for volume, ``m`` to mute, ``i`` for info, Enter / ``b`` / Esc for the
+show menu, ``q`` to quit. It puts the
 terminal into cbreak mode so single keystrokes come through immediately, and
 restores it on exit.
 """
@@ -47,7 +48,7 @@ class StdinBackend(InputBackend):
         self._fd = sys.stdin.fileno()
         self._old_settings = termios.tcgetattr(self._fd)
         tty.setcbreak(self._fd)
-        log.info("stdin input active (arrows=chan/vol, digits, m, i, l, p, q)")
+        log.info("stdin input active (arrows=chan/vol, enter=ok, b/esc=back, g=menu, digits, m, i, l, p, q)")
         try:
             while not self.stopping:
                 r, _, _ = select.select([sys.stdin], [], [], 0.3)
@@ -68,7 +69,7 @@ class StdinBackend(InputBackend):
                 if event is not None:
                     self.emit(event)
                 return
-            # Bare ESC -> quit
+            # Bare ESC -> Back
         event = stdin_char_to_event(ch)
         if event is not None:
             self.emit(event)
