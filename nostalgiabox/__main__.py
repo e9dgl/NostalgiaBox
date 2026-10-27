@@ -102,7 +102,7 @@ def _list_audio_devices() -> int:
             name = dev.get("name", "?")
             desc = dev.get("description", "")
             print(f"  {name}\n      {desc}")
-        print("\nFor a TV, pick the HDMI one, e.g. audio_device: \"alsa/hdmi:CARD=vc4hdmi0,DEV=0\"")
+        print("\nFor a TV, leave audio_device out: the box uses the HDMI port the TV is on.")
         player.terminate()
         return 0
     except Exception as exc:  # noqa: BLE001

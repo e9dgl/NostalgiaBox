@@ -68,4 +68,32 @@ class ShuffleBag(Generic[T]):
         return len(self._queue)
 
 
-__all__ = ["ShuffleBag"]
+class GroupShuffle(Generic[T]):
+    """Picks a random group, then a random item from it: a random show, then
+    a random episode of that show.
+
+    Every show gets an equal turn, so a show with 200 episodes does not crowd
+    out one with 6. Shows are drawn from one shuffle bag and each show's
+    episodes from its own, so nothing repeats until everything has had a go.
+    """
+
+    def __init__(self, groups: Sequence[Sequence[T]], rng: Optional[random.Random] = None) -> None:
+        rng = rng or random.Random()
+        bags = [ShuffleBag(list(g), rng) for g in groups if g]
+        self._bags = bags
+        self._order: ShuffleBag[int] = ShuffleBag(list(range(len(bags))), rng)
+
+    def __len__(self) -> int:
+        return sum(len(b) for b in self._bags)
+
+    @property
+    def is_empty(self) -> bool:
+        return not self._bags
+
+    def next(self) -> T:
+        if not self._bags:
+            raise IndexError("cannot draw from an empty GroupShuffle")
+        return self._bags[self._order.next()].next()
+
+
+__all__ = ["GroupShuffle", "ShuffleBag"]

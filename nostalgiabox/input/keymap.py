@@ -49,17 +49,51 @@ _EVDEV_ACTIONS: Dict[str, InputEvent] = {
     # Info banner.
     "KEY_INFO": InputEvent(Action.INFO),
     "KEY_I": InputEvent(Action.INFO),
-    # Jump to previous channel (the classic "last" / "back" button).
+    # Jump to previous channel (the classic "last" button).
     "KEY_LAST": InputEvent(Action.LAST_CHANNEL),
     "KEY_PREVIOUS": InputEvent(Action.LAST_CHANNEL),
-    "KEY_BACK": InputEvent(Action.LAST_CHANNEL),
     "KEY_L": InputEvent(Action.LAST_CHANNEL),
+    # Back opens the show menu while watching and goes up a level inside it.
+    # Many remotes send Escape for Back, so Escape is Back too (not quit).
+    "KEY_BACK": InputEvent(Action.BACK),
+    "KEY_BACKSPACE": InputEvent(Action.BACK),
+    "KEY_ESC": InputEvent(Action.BACK),
+    "KEY_B": InputEvent(Action.BACK),
+    # Menu / Home / Guide open or close the show menu.
+    "KEY_MENU": InputEvent(Action.MENU),
+    "KEY_HOME": InputEvent(Action.MENU),
+    "KEY_HOMEPAGE": InputEvent(Action.MENU),
+    "KEY_EPG": InputEvent(Action.MENU),
+    "KEY_PROGRAM": InputEvent(Action.MENU),
+    "KEY_COMPOSE": InputEvent(Action.MENU),
+    # Play / pause, fast-forward and rewind. Remotes disagree on the codes.
+    "KEY_PLAYPAUSE": InputEvent(Action.PLAY_PAUSE),
+    "KEY_PLAY": InputEvent(Action.PLAY_PAUSE),
+    "KEY_PAUSE": InputEvent(Action.PLAY_PAUSE),
+    "KEY_PLAYCD": InputEvent(Action.PLAY_PAUSE),
+    "KEY_PAUSECD": InputEvent(Action.PLAY_PAUSE),
+    "KEY_FASTFORWARD": InputEvent(Action.FAST_FORWARD),
+    "KEY_FORWARD": InputEvent(Action.FAST_FORWARD),
+    "KEY_NEXTSONG": InputEvent(Action.FAST_FORWARD),
+    "KEY_REWIND": InputEvent(Action.REWIND),
+    "KEY_PREVIOUSSONG": InputEvent(Action.REWIND),
+    "KEY_K": InputEvent(Action.PLAY_PAUSE),
+    "KEY_DOT": InputEvent(Action.FAST_FORWARD),
+    "KEY_COMMA": InputEvent(Action.REWIND),
+    # A USB mouse (or an air mouse in pointer mode) can drive the menu:
+    # left click is OK, right click is Back. The wheel is handled separately.
+    "BTN_LEFT": InputEvent(Action.ENTER),
+    "BTN_RIGHT": InputEvent(Action.BACK),
+    # Shuffle: a random episode of a random show. The air-mouse remote's
+    # mouse button is not a standard key; see key_overrides to bind it.
+    "KEY_SHUFFLE": InputEvent(Action.SHUFFLE),
+    "BTN_MIDDLE": InputEvent(Action.SHUFFLE),
+    "KEY_S": InputEvent(Action.SHUFFLE),
     # Power / standby.
     "KEY_POWER": InputEvent(Action.POWER),
     "KEY_SLEEP": InputEvent(Action.POWER),
     "KEY_P": InputEvent(Action.POWER),
     # Quit the application (mostly for keyboards during setup).
-    "KEY_ESC": InputEvent(Action.QUIT),
     "KEY_Q": InputEvent(Action.QUIT),
 }
 
@@ -88,6 +122,12 @@ _ACTION_BY_NAME: Dict[str, InputEvent] = {
     "last_channel": InputEvent(Action.LAST_CHANNEL),
     "last": InputEvent(Action.LAST_CHANNEL),
     "power": InputEvent(Action.POWER),
+    "back": InputEvent(Action.BACK),
+    "menu": InputEvent(Action.MENU),
+    "play_pause": InputEvent(Action.PLAY_PAUSE),
+    "fast_forward": InputEvent(Action.FAST_FORWARD),
+    "rewind": InputEvent(Action.REWIND),
+    "shuffle": InputEvent(Action.SHUFFLE),
     "quit": InputEvent(Action.QUIT),
     "none": None,  # explicitly unbind a key
 }
@@ -149,6 +189,17 @@ _CHAR_TO_KEY: Dict[str, str] = {
     "\n": "KEY_ENTER",
     " ": "KEY_ENTER",
     "\x1b": "KEY_ESC",
+    "\x7f": "KEY_BACKSPACE",
+    "b": "KEY_BACKSPACE",
+    "B": "KEY_BACKSPACE",
+    "g": "KEY_MENU",
+    "G": "KEY_MENU",
+    "k": "KEY_K",
+    "K": "KEY_K",
+    "s": "KEY_S",
+    "S": "KEY_S",
+    ".": "KEY_DOT",
+    ",": "KEY_COMMA",
 }
 for _d in range(10):
     _CHAR_TO_KEY[str(_d)] = f"KEY_{_d}"
@@ -190,10 +241,21 @@ _CEC_ACTIONS: Dict[str, InputEvent] = {
     "ok": InputEvent(Action.ENTER),
     "enter": InputEvent(Action.ENTER),
     "info": InputEvent(Action.INFO),
-    "electronic program guide": InputEvent(Action.INFO),
+    "electronic program guide": InputEvent(Action.MENU),
     "display information": InputEvent(Action.INFO),
     "previous channel": InputEvent(Action.LAST_CHANNEL),
-    "exit": InputEvent(Action.LAST_CHANNEL),
+    "exit": InputEvent(Action.BACK),
+    "back": InputEvent(Action.BACK),
+    "root menu": InputEvent(Action.MENU),
+    "setup menu": InputEvent(Action.MENU),
+    "contents menu": InputEvent(Action.MENU),
+    "play": InputEvent(Action.PLAY_PAUSE),
+    "pause": InputEvent(Action.PLAY_PAUSE),
+    "pause-play function": InputEvent(Action.PLAY_PAUSE),
+    "fast forward": InputEvent(Action.FAST_FORWARD),
+    "forward": InputEvent(Action.FAST_FORWARD),
+    "rewind": InputEvent(Action.REWIND),
+    "backward": InputEvent(Action.REWIND),
     "power": InputEvent(Action.POWER),
     "power toggle function": InputEvent(Action.POWER),
     "power off function": InputEvent(Action.POWER),

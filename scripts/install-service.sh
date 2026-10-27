@@ -41,6 +41,25 @@ ${RUN_USER} ALL=(root) NOPASSWD: /sbin/poweroff, /usr/sbin/poweroff, /sbin/shutd
 EOF
 sudo chmod 440 /etc/sudoers.d/nostalgiabox-poweroff
 
+echo "==> Letting the remote's power button blank the screen, not shut down"
+# A Bluetooth or USB remote's power key reaches systemd-logind too, which
+# powers the Pi off by default. NostalgiaBox uses that key for standby.
+# This takes effect after the next reboot.
+sudo mkdir -p /etc/systemd/logind.conf.d
+sudo tee /etc/systemd/logind.conf.d/nostalgiabox.conf > /dev/null <<EOF
+[Login]
+HandlePowerKey=ignore
+HandleSuspendKey=ignore
+HandleHibernateKey=ignore
+EOF
+
+echo "==> Letting '${RUN_USER}' pair remotes from the menu"
+# The "Pair a remote" screen runs bluetoothctl, which BlueZ only allows for
+# root and the bluetooth group.
+if getent group bluetooth > /dev/null; then
+  sudo usermod -aG bluetooth "${RUN_USER}"
+fi
+
 echo "==> Enabling and starting the service"
 sudo systemctl daemon-reload
 sudo systemctl enable nostalgiabox.service

@@ -315,6 +315,6 @@ def test_mpv_audio_is_unity_and_has_no_loudness_filter():
     assert "loudnorm" not in blob
     assert "dynaudnorm" not in blob
     assert "acompressor" not in blob
-    # The 4:3 fit is a video filter, not an audio gain stage.
-    assert options["vf"].startswith("lavfi=[scale=")
+    # No forced 4:3 frame and no audio filter chain.
+    assert "vf" not in options
     assert "af" not in options

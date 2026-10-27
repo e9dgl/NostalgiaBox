@@ -17,6 +17,7 @@ def build_app(tmp_path, *, assets_dir=None, **overrides):
         "start_channel": 2,
         "start_offset": 0,  # keep test assertions on start=0 unless overridden
         "power_off_command": [],  # no-op in tests (never actually shut down)
+        "start_mode": "channel",  # most tests drive the channel lineup
         "channels": [
             {"number": 2, "name": "Dragon Tales", "path": str(tmp_path / "dragon")},
             {"number": 3, "name": "Arthur", "path": str(tmp_path / "arthur")},
@@ -165,7 +166,9 @@ def test_episode_advances_on_end(tmp_path):
 def test_standby_blanks_and_ignores_input(tmp_path):
     app, player, _ = build_app(tmp_path)
     app.start()
-    send(app, Action.POWER)
+    send(app, Action.POWER)  # asks: sleep or shut down?
+    assert app.menu.is_open and not app.standby
+    send(app, Action.POWER)  # a second press sleeps
     assert app.standby
     assert player.current is None  # screen blanked
     assert 3 in player.overlays  # standby overlay
@@ -261,7 +264,8 @@ def test_empty_channel_shows_no_signal(tmp_path):
             "channels": [
                 {"number": 2, "name": "Dragon Tales", "path": str(tmp_path / "dragon")},
                 {"number": 3, "name": "Arthur", "path": str(tmp_path / "arthur")},
-            ]
+            ],
+            "start_mode": "channel",
         }
     )
     app = TVApp(config, MockPlayer(), InputManager([]), clock=FakeClock())
@@ -387,6 +391,7 @@ def test_standby_does_not_look_like_a_freeze(tmp_path):
     )
     app.start()
     send(app, Action.POWER)
+    send(app, Action.POWER)  # power screen, then sleep
     clock.advance(30)
     app.step()
     assert player.seeks == []

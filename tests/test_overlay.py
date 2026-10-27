@@ -6,7 +6,8 @@ from nostalgiabox.player import MockPlayer
 from tests.helpers import FakeClock, make_show
 
 # The 4:3 frame within the 1280x720 canvas spans x in [160, 1120].
-_FRAME_X0, _FRAME_X1 = 160, 1120
+# The title-safe area of the 1280x720 canvas.
+_FRAME_X0, _FRAME_X1 = 64, 1216
 
 
 def _all_x_positions(ass: str):
@@ -99,7 +100,7 @@ def test_message_overlay(tmp_path):
     assert "NO CHANNEL" in player.overlays[4]
 
 
-def test_channel_bug_sits_inside_4x3_frame(tmp_path):
+def test_channel_bug_sits_inside_the_screen(tmp_path):
     player = MockPlayer()
     om = OverlayManager(player, _config(tmp_path), clock=FakeClock())
     om.show_channel_bug(3, "Arthur")
@@ -107,7 +108,7 @@ def test_channel_bug_sits_inside_4x3_frame(tmp_path):
     assert xs and all(_FRAME_X0 <= x <= _FRAME_X1 for x in xs)
 
 
-def test_volume_bar_sits_inside_4x3_frame(tmp_path):
+def test_volume_bar_sits_inside_the_screen(tmp_path):
     player = MockPlayer()
     om = OverlayManager(player, _config(tmp_path), clock=FakeClock())
     om.show_volume(100, muted=False)  # widest case: all 20 bars drawn
@@ -120,5 +121,5 @@ def test_overlay_uses_configured_font_and_color(tmp_path):
     om = OverlayManager(player, _config(tmp_path), clock=FakeClock())
     om.show_channel_bug(3, "Arthur")
     ass = player.overlays[1]
-    assert "\\fnVT323" in ass          # bundled retro font
-    assert "&H005AFF4D" in ass         # #4DFF5A -> ASS BBGGRR
+    assert "\\fnFredoka SemiBold" in ass  # bundled rounded font
+    assert "&H003FD2FF" in ass             # #FFD23F -> ASS BBGGRR

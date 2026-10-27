@@ -71,13 +71,40 @@ tune_in: random
 # shuffle only.
 order: shuffle
 
-start_channel: 2          # which channel the box powers on to
+# What happens at power-on.
+#   shuffle_all - random episodes from every show, back to back.  [default]
+#   channel     - tune to start_channel, like a TV.
+start_mode: shuffle_all
+start_channel: 2          # the channel used by start_mode: channel
+
+# --- The show menu -----------------------------------------------------------
+# Back (or OK, or Menu) on the remote opens a list of shows, A to Z. Pick a show
+# to play it from the start, shuffle it, or choose a series and an episode.
+# The menu closes by itself after this many seconds without a press (0 = never).
+menu_timeout: 60
+
+# --- Play/pause, fast-forward and rewind --------------------------------------
+# Play/pause freezes the picture and shows the show, series, episode and the
+# episode's name. Fast-forward and rewind jump by these many seconds.
+seek_forward_seconds: 30
+seek_back_seconds: 10
+
+# --- Shuffle button -------------------------------------------------------------
+# The remote button that means "a random episode of a random show". Press the
+# button, then find its name with:
+#   journalctl -u nostalgiabox -n 20 --no-pager | grep "does nothing"
+# shuffle_button: KEY_F12
+
+# --- Sound sync ----------------------------------------------------------------
+# If voices are out of step with mouths, move the sound in milliseconds:
+# positive plays it later, negative earlier (-2000 to 2000). Easier: Menu ->
+# Sound sync, then left/right while watching. The value saved there (in
+# settings.json beside the state file) wins over this one.
+audio_delay_ms: 0
 
 # --- The "feel" of the TV ----------------------------------------------------
-# Shows keep their own aspect ratio (4:3 is pillar-boxed, 16:9 fills the screen)
-# and get the CRT curve/rounding. Set force_4_3:true to instead letterbox every
-# show into a single 4:3 frame.
-force_4_3: false
+# Every show keeps its own shape: 4:3 shows get black bars at the sides, 16:9
+# shows fill the screen.
 
 # Start each episode a random number of seconds in, between these two values, so
 # channel switches land at varied points in the show (skips the black leader/
@@ -97,22 +124,22 @@ channel_bug_seconds: 4    # how long the channel banner lingers
 osd_duration: 2           # how long the volume bar / messages linger
 
 # --- On-screen display look (the green digital readouts) ---------------------
+# The defaults are built for young children: a big rounded font, and yellow and
+# white on deep blue for strong contrast. For the old green terminal look, use
+# font: "VT323", color: "#4DFF5A", glow: true.
 ui:
-  font: "VT323"           # bundled retro terminal font (installed by install.sh)
-  color: "#4DFF5A"        # phosphor green for CH banner, volume bar, messages
-  dim_color: "#123B18"    # (reserved) colour for unlit elements
-  glow: true              # soft CRT-style glow around the text
+  font: "Fredoka SemiBold"     # bundled rounded font (installed by install.sh)
+  color: "#FFD23F"             # CH banner, volume bar, messages
+  dim_color: "#123B18"         # (reserved) colour for unlit elements
+  glow: false                  # false = thick dark outline (easier to read)
+  menu_accent: "#FFD23F"       # the highlighted menu tile
+  menu_background: "#16205A"   # the menu board, and text outlines
+  menu_tile: "#2B3A8C"         # the other menu tiles
 
-# --- CRT picture effect (for 4:3 shows on a flat TV) -------------------------
-# Bends the picture like a tube TV: a gentle bulge, rounded corners, a vignette
-# and faint scanlines. Set enabled:false if your Pi struggles or you dislike it.
-crt:
-  enabled: true
-  curvature: 0.12         # 0 = flat, ~0.2 = strongly bulged
-  corner_radius: 0.065    # how rounded the corners are
-  vignette: 0.25          # edge darkening (0-1)
-  scanlines: true
-  scanline_intensity: 0.12
+# --- Video decoding ----------------------------------------------------------
+# auto-safe lets mpv pick hardware decoding. On a Raspberry Pi 3 (including the
+# 3 A+), if H.264 video stutters, try v4l2m2m-copy. "no" decodes on the CPU.
+hwdec: auto-safe
 
 # --- Audio -------------------------------------------------------------------
 # 100 leaves the Pi at full output so the TV's volume buttons (or the TV's own
@@ -128,9 +155,12 @@ volume_step: 5            # Pi mode: how much each volume press changes it
 # up, Left = volume down, m = mute). The TV must have CEC turned on (Anynet+,
 # SimpLink, BRAVIA Sync, or the set's "HDMI control" name).
 volume_control: auto
-# Force audio to a specific output. On a Pi the default can be the 3.5mm jack;
-# for a TV you want HDMI. Run `nostalgiabox --list-audio` to see the names.
-# audio_device: "alsa/hdmi:CARD=vc4hdmi0,DEV=0"   # HDMI0 (use vc4hdmi1 for HDMI1)
+# Where the sound goes. Left out (or "auto"), it follows the TV: the box finds
+# the HDMI port with a TV on it and uses that port for picture, sound and the
+# TV remote, so either micro-HDMI port on a Pi 4 works. A vc4hdmi setting is
+# treated as "auto". Set it only for something else, like a USB sound card;
+# `nostalgiabox --list-audio` lists the names.
+# audio_device: auto
 
 # Pi mode only: pressing volume-down once more when already at 0 cleanly powers
 # off the Pi so it's safe to unplug (needs the sudo rule from
@@ -168,10 +198,12 @@ input:
 
   # Map specific keys to actions (handy for odd remotes). Find a button's key
   # name with `sudo evtest`. Actions: channel_up, channel_down, volume_up,
-  # volume_down, mute, enter, info, last_channel, power, quit, digit_0..digit_9,
-  # or none (to unbind). Example for a Logitech R400 presenter. NOTE: its
-  # play-screen button sends Escape (the quit key!), so remap KEY_ESC too or it
-  # will shut the box off.
+  # volume_down, mute, enter, back, menu, play_pause, fast_forward, rewind,
+  # shuffle (a random episode of a random show; asks first while one is on),
+  # info, last_channel, power, quit,
+  # digit_0..digit_9, or none (to unbind). In the show menu, channel up/down
+  # move the highlight, enter chooses, and back goes up a level. Escape is
+  # back, not quit. Example for a Logitech R400 presenter:
   # key_overrides:
   #   KEY_PAGEUP: channel_down    # left  (<) arrow
   #   KEY_PAGEDOWN: channel_up    # right (>) arrow
