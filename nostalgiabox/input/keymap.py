@@ -84,6 +84,11 @@ _EVDEV_ACTIONS: Dict[str, InputEvent] = {
     # left click is OK, right click is Back. The wheel is handled separately.
     "BTN_LEFT": InputEvent(Action.ENTER),
     "BTN_RIGHT": InputEvent(Action.BACK),
+    # Shuffle: a random episode of a random show. The air-mouse remote's
+    # mouse button is not a standard key; see key_overrides to bind it.
+    "KEY_SHUFFLE": InputEvent(Action.SHUFFLE),
+    "BTN_MIDDLE": InputEvent(Action.SHUFFLE),
+    "KEY_S": InputEvent(Action.SHUFFLE),
     # Power / standby.
     "KEY_POWER": InputEvent(Action.POWER),
     "KEY_SLEEP": InputEvent(Action.POWER),
@@ -122,6 +127,7 @@ _ACTION_BY_NAME: Dict[str, InputEvent] = {
     "play_pause": InputEvent(Action.PLAY_PAUSE),
     "fast_forward": InputEvent(Action.FAST_FORWARD),
     "rewind": InputEvent(Action.REWIND),
+    "shuffle": InputEvent(Action.SHUFFLE),
     "quit": InputEvent(Action.QUIT),
     "none": None,  # explicitly unbind a key
 }
@@ -190,6 +196,8 @@ _CHAR_TO_KEY: Dict[str, str] = {
     "G": "KEY_MENU",
     "k": "KEY_K",
     "K": "KEY_K",
+    "s": "KEY_S",
+    "S": "KEY_S",
     ".": "KEY_DOT",
     ",": "KEY_COMMA",
 }

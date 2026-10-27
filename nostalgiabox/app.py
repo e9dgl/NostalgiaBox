@@ -60,7 +60,7 @@ from .menu import (
     Screen,
 )
 from .overlay import OverlayManager
-from .playlist import ShuffleBag
+from .playlist import GroupShuffle
 from .player import END_EOF, END_ERROR, MockPlayer, Player
 from .stall import PlaybackSample, ProblemLog, Stall, StallWatchdog, problem_directory
 from .volume import resolve_volume_control
@@ -108,8 +108,10 @@ class TVApp:
             for ep in show.episodes
         }
         rng = random.Random(config.shuffle_seed)
-        self._mix: Optional[ShuffleBag[Path]] = (
-            ShuffleBag(list(self._episode_info), rng) if self._episode_info else None
+        # "Shuffle everything": a random show, then a random episode of it.
+        self._mix: Optional[GroupShuffle[Path]] = (
+            GroupShuffle([[ep.path for ep in show.episodes] for show in self.shows], rng)
+            if self._episode_info else None
         )
         self._mix_rng = rng
         # "mix", "channel" or "queue" (see the module docstring).
@@ -134,7 +136,7 @@ class TVApp:
         self._sound_sync_deadline = 0.0
         # True while the power screen holds a pause it started itself, so
         # leaving that screen carries on (and a pause the viewer chose stays).
-        self._power_paused = False
+        self._held_paused = False
         self._pairing_version = -1
 
         # Runtime state. ``volume`` / ``muted`` are the only Pi level. mpv is
@@ -345,6 +347,9 @@ class TVApp:
         if action == Action.POWER:
             self._power_button()
             return
+        if action == Action.SHUFFLE and not self.standby:
+            self._shuffle_button()
+            return
 
         # While in standby, ignore everything except POWER/QUIT (handled above).
         if self.standby:
@@ -400,9 +405,9 @@ class TVApp:
     def close_menu(self) -> None:
         self.menu.close()
         self.overlay.clear_menu()
-        if self._power_paused:
+        if self._held_paused:
             # Leaving the power screen: carry on from where it stopped.
-            self._power_paused = False
+            self._held_paused = False
             if self.paused:
                 self.paused = False
                 self.player.set_pause(False)
@@ -423,9 +428,10 @@ class TVApp:
             if choice is not None and choice.kind in (PAIR_REMOTE, PAIR_SEARCH, PAIR_DEVICE):
                 self._pairing_choice(choice)
             elif choice is not None:
-                if choice.kind in (POWER_SLEEP, POWER_SHUTDOWN):
-                    # Going to sleep or off: no point un-pausing first.
-                    self._power_paused = False
+                if choice.kind in (POWER_SLEEP, POWER_SHUTDOWN, SHUFFLE_ALL):
+                    # Sleeping, switching off or starting something new: no
+                    # point un-pausing the old episode first.
+                    self._held_paused = False
                 self.close_menu()
                 self._play_choice(choice)
                 return
@@ -526,18 +532,42 @@ class TVApp:
         if self._sound_sync:
             self._end_sound_sync()
         if self.menu.is_open and self.menu.screen.kind == "power":
-            self._power_paused = False
+            self._held_paused = False
             self.close_menu()
             self._toggle_standby()
             return
+        self._ask(self.menu.open_power)
+
+    def _shuffle_button(self) -> None:
+        """Shuffle: a random episode of a random show. When something is on,
+        pause it and ask first; pressed again on that question, it shuffles."""
+        if self._sound_sync:
+            self._end_sound_sync()
+        if self.menu.is_open and self.menu.screen.kind == "shuffle":
+            self._held_paused = False
+            self.close_menu()
+            self.start_mix()
+            return
+        if self._playing_path is None:
+            self.close_menu()
+            self.start_mix()
+            return
+        self._ask(self.menu.open_shuffle)
+
+    def _ask(self, open_screen: Callable[[], None]) -> None:
+        """Pause what is on and show a question screen over it."""
         self._digit_buffer = ""
+        if self.menu.is_open:
+            # Swap screens without un-pausing in between.
+            self.menu.close()
+            self.overlay.clear_menu()
         # The show waits while the viewer decides.
         if not self.paused and self._playing_path is not None and self._switch_deadline is None:
             self.paused = True
             self.player.set_pause(True)
             self._stall.disarm()
-            self._power_paused = True
-        self.menu.open_power()
+            self._held_paused = True
+        open_screen()
         self._touch_menu()
         self.overlay.show_menu(self.menu)
 

@@ -194,6 +194,11 @@ class KeyboardBackend(InputBackend):
             if input_event is not None:
                 break
         if input_event is None:
+            if event.value == 1:
+                # Says which button was pressed, so it can be given a job with
+                # key_overrides (journalctl -u nostalgiabox | grep "does nothing").
+                names = _code_to_names(getattr(ecodes, "keys", ecodes.KEY), event.code)
+                log.info("button %s does nothing (code %d)", "/".join(names) or "?", event.code)
             return
         if not key_event_should_emit(
             event.value, input_event.action, allow_repeat=self._allow_repeat

@@ -89,6 +89,12 @@ menu_timeout: 60
 seek_forward_seconds: 30
 seek_back_seconds: 10
 
+# --- Shuffle button -------------------------------------------------------------
+# The remote button that means "a random episode of a random show". Press the
+# button, then find its name with:
+#   journalctl -u nostalgiabox -n 20 --no-pager | grep "does nothing"
+# shuffle_button: KEY_F12
+
 # --- Sound sync ----------------------------------------------------------------
 # If voices are out of step with mouths, move the sound in milliseconds:
 # positive plays it later, negative earlier (-2000 to 2000). Easier: Menu ->
@@ -193,6 +199,7 @@ input:
   # Map specific keys to actions (handy for odd remotes). Find a button's key
   # name with `sudo evtest`. Actions: channel_up, channel_down, volume_up,
   # volume_down, mute, enter, back, menu, play_pause, fast_forward, rewind,
+  # shuffle (a random episode of a random show; asks first while one is on),
   # info, last_channel, power, quit,
   # digit_0..digit_9, or none (to unbind). In the show menu, channel up/down
   # move the highlight, enter chooses, and back goes up a level. Escape is

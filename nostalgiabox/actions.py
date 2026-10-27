@@ -32,6 +32,7 @@ class Action(Enum):
     PLAY_PAUSE = auto()     # pause the episode, or carry on
     FAST_FORWARD = auto()   # jump ahead a little
     REWIND = auto()         # jump back a little
+    SHUFFLE = auto()        # a random episode of a random show (asks first)
     QUIT = auto()           # shut the application down entirely
 
 

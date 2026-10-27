@@ -575,7 +575,7 @@ def config_from_dict(data: Dict[str, Any], *, base_dir: Optional[Path] = None) -
         stall_seek=_clamp_float(data.get("stall_seek", 10.0), 1.0, 120.0, "stall_seek"),
         stall_flag_after=_clamp_int(data.get("stall_flag_after", 2), 1, 100, "stall_flag_after"),
         assets_dir=assets_dir,
-        input_options=dict(data.get("input") or {}),
+        input_options=_input_options(data),
         media_root=media_root,
         usb_media_root=usb_root,
         active_media_root=active,
@@ -666,6 +666,18 @@ def _ensure_unique_numbers(channels: List[ChannelConfig]) -> None:
                 f"'{seen[ch.number]}' and '{ch.name}'"
             )
         seen[ch.number] = ch.name
+
+
+def _input_options(data: Mapping[str, Any]) -> dict:
+    """The ``input:`` block, plus ``shuffle_button: KEY_X`` from the top level
+    (one line to add, instead of a nested key_overrides block)."""
+    options = dict(data.get("input") or {})
+    button = data.get("shuffle_button")
+    if button:
+        overrides = dict(options.get("key_overrides") or {})
+        overrides.setdefault(str(button).strip(), "shuffle")
+        options["key_overrides"] = overrides
+    return options
 
 
 def _clamp_int(value: Any, lo: int, hi: int, name: str) -> int:

@@ -100,6 +100,20 @@ class Menu:
     def close(self) -> None:
         self._stack = []
 
+    def open_shuffle(self) -> None:
+        """The shuffle button's "are you sure?", shown while something plays."""
+        self._stack = [
+            Screen(
+                "Shuffle something new?",
+                [
+                    MenuItem("Yes, shuffle", choice=Choice(SHUFFLE_ALL)),
+                    MenuItem("No, keep watching", choice=Choice(POWER_CANCEL)),
+                ],
+                note="A random episode of a random show.",
+                kind="shuffle",
+            )
+        ]
+
     def open_power(self) -> None:
         """The power button's screen: sleep, or shut down (with a second
         "are you sure?" screen), or carry on watching."""

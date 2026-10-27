@@ -414,6 +414,19 @@ quit
 ```
 
 `trust` makes it reconnect by itself after a reboot or after it sleeps.
+
+**The mouse button as Shuffle.** Air-mouse remotes do not agree on what their
+mouse button sends, so find out once: press it, then run
+`journalctl -u nostalgiabox -n 20 --no-pager | grep "does nothing"`. A line
+like `button KEY_F12 does nothing` names it. Add a line with that name to the
+bottom of `config.yaml`:
+
+```yaml
+shuffle_button: KEY_F12
+```
+
+and run `sudo systemctl restart nostalgiabox`. If no line appears, the button
+only switches the remote into pointer mode and sends nothing the box can see.
 NostalgiaBox notices a remote that connects at any time. Reboot once after
 installing (`sudo reboot`) so the remote's power button blanks the screen
 instead of shutting the Pi down. Back opens the menu, Home opens or closes it,
@@ -498,6 +511,7 @@ it again.
 | Change channels | Channel up / down |
 | Adjust volume | Volume up / down (the TV, when HDMI-CEC works) |
 | Mute | Mute |
+| Shuffle something new | **Shuffle** (bind the air-mouse remote's mouse button to it, see below). While something is on it pauses and asks "Shuffle something new?"; press OK (or Shuffle again) for a random episode of a random show |
 | Sleep (blank screen) | **Power**, then **Sleep** (or press Power twice). Power again wakes it |
 | **Turn off** (safe to unplug) | **Power**, then **Shut down**, then **Yes, shut down** |
 | Voices out of step with mouths | Menu → **Sound sync**. Left / right move the sound earlier / later in 50 ms steps while the show plays; OK saves it |
