@@ -8,9 +8,10 @@ Three levels, all driven by Up / Down / OK / Back on the remote:
 3. **One series** - "Play <series> from the start", then its episodes.
 
 Choosing an episode plays it and carries on through the rest of the show in
-order. The last line of the top level, **Pair a remote**, opens a screen the
-app fills in as Bluetooth devices are found, and **Sound sync** above it lines the sound up with
-the picture. The power button opens a separate "Turn off" screen
+order. The last line of the top level, **Settings**, holds **How to use the
+remote** (a drawing of the remote with each button explained), **Sound sync**
+(lines the sound up with the picture) and **Pair a remote** (a screen the app
+fills in as Bluetooth devices are found). The power button opens a separate "Turn off" screen
 (:meth:`Menu.open_power`). The menu itself is pure state: :meth:`Menu.select` returns a
 :class:`Choice` and the app decides how to play it. Drawing lives in
 ``overlay.py``.
@@ -47,12 +48,34 @@ class Choice:
 
 
 @dataclass(frozen=True)
+class HelpPage:
+    """One page of "How to use the remote": which buttons to light up on the
+    drawing, and what they do while watching and in the menu."""
+
+    title: str
+    keys: Tuple[str, ...] = ()
+    watching: str = ""
+    in_menu: str = ""
+    note: str = ""
+
+
+# Button names the remote drawing knows (see ``overlay._remote_ass``).
+REMOTE_KEYS = (
+    "power", "mute", "rewind", "play", "forward",
+    "up", "down", "left", "right", "ok",
+    "back", "pointer", "home", "minus", "plus",
+)
+
+
+@dataclass(frozen=True)
 class MenuItem:
     label: str
     # What OK does: "open" pushes ``screen``; anything else returns ``choice``.
     choice: Optional[Choice] = None
     opens: Optional["Screen"] = None
     detail: str = ""
+    # Set on the pages of the "How to use the remote" screen.
+    help: Optional[HelpPage] = None
 
 
 @dataclass
@@ -70,9 +93,17 @@ class Screen:
 class Menu:
     """The menu's screens and highlight. Closed until :meth:`open` is called."""
 
-    def __init__(self, shows: Sequence[Show]) -> None:
+    def __init__(
+        self,
+        shows: Sequence[Show],
+        *,
+        seek_back_seconds: float = 10.0,
+        seek_forward_seconds: float = 30.0,
+    ) -> None:
         self.shows = list(shows)
         self._stack: List[Screen] = []
+        self._seek_back = seek_back_seconds
+        self._seek_forward = seek_forward_seconds
 
     # -- state --------------------------------------------------------------
     @property
@@ -200,9 +231,28 @@ class Menu:
                     detail=_count(count, "episode"),
                 )
             )
-        items.append(MenuItem("Sound sync", choice=Choice(SOUND_SYNC)))
-        items.append(MenuItem("Pair a remote", choice=Choice(PAIR_REMOTE)))
+        items.append(MenuItem("Settings", opens=self._settings_screen()))
         return Screen("What do you want to watch?", items)
+
+    def _settings_screen(self) -> Screen:
+        return Screen(
+            "Settings",
+            [
+                MenuItem("How to use the remote", opens=self._help_screen()),
+                MenuItem("Sound sync", choice=Choice(SOUND_SYNC)),
+                MenuItem("Pair a remote", choice=Choice(PAIR_REMOTE)),
+            ],
+            breadcrumb="All shows",
+        )
+
+    def _help_screen(self) -> Screen:
+        pages = help_pages(self._seek_back, self._seek_forward)
+        return Screen(
+            "How to use the remote",
+            [MenuItem(page.title, help=page) for page in pages],
+            breadcrumb="Settings",
+            kind="help",
+        )
 
     def _show_screen(self, show: Show) -> Screen:
         paths = tuple(ep.path for ep in show.episodes)
@@ -240,6 +290,83 @@ class Menu:
         return Screen(series.name, items, breadcrumb=show.name)
 
 
+def help_pages(seek_back: float = 10.0, seek_forward: float = 30.0) -> List[HelpPage]:
+    """The pages of "How to use the remote", one per button (or pair)."""
+    return [
+        HelpPage(
+            "Your remote",
+            note="Press DOWN to see what each button does. Press BACK when you're done.",
+        ),
+        HelpPage(
+            "Power",
+            ("power",),
+            watching="Asks: sleep, or shut down?",
+            in_menu="Asks: sleep, or shut down?",
+            note="Press it twice to sleep. Press it again to wake up.",
+        ),
+        HelpPage(
+            "OK",
+            ("ok",),
+            watching="Opens the menu",
+            in_menu="Chooses the yellow one",
+            note="If the show is paused, OK carries on.",
+        ),
+        HelpPage(
+            "Back",
+            ("back",),
+            watching="Opens the menu",
+            in_menu="Goes back a step",
+        ),
+        HelpPage(
+            "Home",
+            ("home",),
+            watching="Opens the menu",
+            in_menu="Closes the menu",
+        ),
+        HelpPage(
+            "Up and down",
+            ("up", "down"),
+            watching="Changes the show",
+            in_menu="Moves up and down the list",
+        ),
+        HelpPage(
+            "Volume",
+            ("left", "right", "minus", "plus"),
+            watching="Left or minus is quieter. Right or plus is louder.",
+            in_menu="Quieter and louder, too",
+        ),
+        HelpPage(
+            "Mute",
+            ("mute",),
+            watching="Turns the sound off",
+            note="Press it again to bring the sound back.",
+        ),
+        HelpPage(
+            "Play and pause",
+            ("play",),
+            watching="Pauses, and says what's on",
+            note="Press it again, or OK, to carry on.",
+        ),
+        HelpPage(
+            "Rewind and fast forward",
+            ("rewind", "forward"),
+            watching=f"Back {seek_back:g} seconds, or on {seek_forward:g} seconds",
+        ),
+        HelpPage(
+            "Shuffle",
+            ("pointer",),
+            watching="Plays a random episode of a random show",
+            note="If something is on, it asks first.",
+        ),
+        HelpPage(
+            "Using the menu",
+            ("up", "down", "ok", "back"),
+            in_menu="Pick a show, then Play from the start, Shuffle, or an episode",
+            note="Shuffle everything, at the top, mixes all the shows.",
+        ),
+    ]
+
+
 def _count(n: int, word: str) -> str:
     return f"{n} {word}" + ("" if n == 1 else "s")
 
@@ -247,6 +374,9 @@ def _count(n: int, word: str) -> str:
 __all__ = [
     "Menu",
     "MenuItem",
+    "HelpPage",
+    "REMOTE_KEYS",
+    "help_pages",
     "Screen",
     "Choice",
     "SHUFFLE_ALL",

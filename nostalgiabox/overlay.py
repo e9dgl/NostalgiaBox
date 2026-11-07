@@ -10,7 +10,9 @@ on a thick deep-blue outline, and solid backgrounds behind anything long.
   dots for the rest, with a "Volume" label - matching a classic TV OSD;
 * the **show menu** fills the screen: a deep-blue board with 90s colour stripes
   along the top and big rounded tiles, the chosen one in yellow;
-* the **now playing** card names the show and episode when one starts.
+* the **now playing** card names the show and episode when one starts;
+* **How to use the remote** (Menu > Settings) draws the remote in the same
+  colours, lights up one button at a time in yellow and says what it does.
 
 Everything is rendered as ASS overlays on a fixed 1280x720 virtual canvas (mpv
 scales it to the TV) and cleared automatically after a few seconds by
@@ -369,6 +371,8 @@ def _pause_icon(cx: int, cy: int, fill: str) -> str:
 def _menu_ass(menu: "Menu", ui: UiConfig) -> str:
     """The show menu: a solid screen of big rounded tiles, one highlighted."""
     screen = menu.screen
+    if screen.kind == "help":
+        return _help_ass(menu, ui)
     x0, x1 = _IX0, _IX1
     tile_h, gap = 70, 14
     top = 184
@@ -435,6 +439,255 @@ def _menu_ass(menu: "Menu", ui: UiConfig) -> str:
         rf"OK = choose      BACK = {back}"
     )
     return "\n".join(parts)
+
+
+# --------------------------------------------------------------------------
+# "How to use the remote"
+# --------------------------------------------------------------------------
+# Where the remote is drawn (top-left corner of its body) and its size. The
+# layout follows the real air-mouse remote, button for button.
+_REMOTE_X = 120
+_REMOTE_Y = 100
+_REMOTE_W = 250
+_REMOTE_H = 570
+_POWER_RED = "#E4572E"
+
+# name -> (centre x, centre y, radius), relative to the remote's corner.
+_ROUND_KEYS = {
+    "power": (55, 62, 28),
+    "mute": (195, 62, 28),
+    "rewind": (55, 142, 28),
+    "play": (125, 142, 28),
+    "forward": (195, 142, 28),
+    "back": (55, 442, 28),
+    "pointer": (125, 442, 28),
+    "home": (195, 442, 28),
+}
+_PAD_CX, _PAD_CY, _PAD_R, _OK_R = 125, 292, 100, 46
+_ARROWS = {"up": (0, -70), "down": (0, 70), "left": (-70, 0), "right": (70, 0)}
+_VOL_X, _VOL_Y, _VOL_W, _VOL_H = 25, 497, 200, 54
+_VOL_KEYS = {"minus": 58, "plus": 192}
+
+
+def _help_ass(menu: "Menu", ui: UiConfig) -> str:
+    """One page of "How to use the remote": the remote on the left with this
+    page's buttons lit up in yellow, and what they do on the right."""
+    screen = menu.screen
+    page = screen.items[screen.cursor].help if screen.items else None
+    keys = page.keys if page is not None else ()
+    parts = [
+        _filled_rect(x=0, y=0, w=CANVAS_W, h=CANVAS_H, fill=_hex_to_ass(ui.menu_background)),
+    ]
+    stripe_w = CANVAS_W / len(_STRIPES)
+    for i, color in enumerate(_STRIPES):
+        parts.append(
+            _filled_rect(x=i * stripe_w, y=0, w=stripe_w + 1, h=12, fill=_hex_to_ass(color))
+        )
+    parts.append(_remote_ass(keys, ui))
+
+    x0, x1 = 450, _IX1
+    parts.append(
+        rf"{{\an7\pos({x0},{_IY0 + 2}){_text(ui, size=32, color=_SOFT)}}}"
+        rf"{_escape(screen.breadcrumb)}  >  {_escape(screen.title)}"
+    )
+    parts.append(
+        rf"{{\an9\pos({x1},{_IY0 + 2}){_text(ui, size=32, color=_SOFT)}}}"
+        rf"{screen.cursor + 1} of {len(screen.items)}"
+    )
+    if page is not None:
+        parts.append(
+            rf"{{\an7\pos({x0},{_IY0 + 44}){_text(ui, size=64, color=_WHITE)}}}"
+            rf"{_escape(_clip(page.title, 24))}"
+        )
+        y = _IY0 + 136
+        for heading, words in (("WHILE WATCHING", page.watching), ("IN THE MENU", page.in_menu)):
+            if not words:
+                continue
+            lines = _wrap(words, 33)
+            h = 66 + 50 * len(lines)
+            parts.append(_rounded_rect(x=x0, y=y, w=x1 - x0, h=h, r=22, fill=ui.menu_tile))
+            parts.append(
+                rf"{{\an7\pos({x0 + 28},{y + 16}){_text(ui, size=30, color=ui.menu_accent)}}}"
+                rf"{heading}"
+            )
+            for i, line in enumerate(lines):
+                parts.append(
+                    rf"{{\an7\pos({x0 + 28},{y + 54 + 50 * i}){_text(ui, size=42, color=_WHITE)}}}"
+                    rf"{_escape(line)}"
+                )
+            y += h + 18
+        if page.note:
+            for i, line in enumerate(_wrap(page.note, 40)):
+                parts.append(
+                    rf"{{\an7\pos({x0 + 4},{y + 6 + 44 * i}){_text(ui, size=36, color=_WHITE)}}}"
+                    rf"{_escape(line)}"
+                )
+    parts.append(
+        rf"{{\an1\pos({x0},{_IY1 + 8}){_text(ui, size=32, color=_SOFT)}}}"
+        r"DOWN = next button      UP = last one      BACK = done"
+    )
+    return "\n".join(parts)
+
+
+def _remote_ass(lit: "tuple[str, ...]", ui: UiConfig) -> str:
+    """The remote, drawn in the menu colours. Buttons named in ``lit`` are
+    yellow with a white ring; the rest are dark with white symbols."""
+    rx, ry = _REMOTE_X, _REMOTE_Y
+    navy, tile, yellow = ui.menu_background, ui.menu_tile, ui.menu_accent
+    parts = [
+        _rounded_rect(x=rx - 6, y=ry - 6, w=_REMOTE_W + 12, h=_REMOTE_H + 12, r=72, fill=_WHITE),
+        _rounded_rect(x=rx, y=ry, w=_REMOTE_W, h=_REMOTE_H, r=66, fill=tile),
+    ]
+
+    def button(name: str, cx: float, cy: float, r: float) -> "tuple[str, str]":
+        """Draw a round button; return (its fill, the colour for its symbol)."""
+        if name in lit:
+            parts.append(_circle(cx=cx, cy=cy, r=r + 6, fill=_hex_to_ass(_WHITE)))
+            parts.append(_circle(cx=cx, cy=cy, r=r, fill=_hex_to_ass(yellow)))
+            return yellow, navy
+        parts.append(_circle(cx=cx, cy=cy, r=r, fill=_hex_to_ass(navy)))
+        return navy, (_POWER_RED if name == "power" else _WHITE)
+
+    for name, (bx, by, br) in _ROUND_KEYS.items():
+        cx, cy = rx + bx, ry + by
+        back, ink = button(name, cx, cy, br)
+        parts.append(_symbol(name, cx, cy, ink, back))
+
+    # The round pad: four arrows on a dark ring, OK in the middle.
+    pcx, pcy = rx + _PAD_CX, ry + _PAD_CY
+    parts.append(_circle(cx=pcx, cy=pcy, r=_PAD_R, fill=_hex_to_ass(navy)))
+    for name, (dx, dy) in _ARROWS.items():
+        cx, cy = pcx + dx, pcy + dy
+        ink = _WHITE
+        if name in lit:
+            parts.append(_circle(cx=cx, cy=cy, r=30, fill=_hex_to_ass(_WHITE)))
+            parts.append(_circle(cx=cx, cy=cy, r=25, fill=_hex_to_ass(yellow)))
+            ink = navy
+        parts.append(_symbol(name, cx, cy, ink, navy))
+    parts.append(_circle(cx=pcx, cy=pcy, r=_OK_R + 4, fill=_hex_to_ass(tile)))
+    _, ink = button("ok", pcx, pcy, _OK_R)
+    parts.append(rf"{{\an5\pos({pcx},{pcy}){_text(ui, size=40, color=ink)}}}OK")
+
+    # The long volume rocker: minus on the left, plus on the right.
+    parts.append(_rounded_rect(x=rx + _VOL_X, y=ry + _VOL_Y, w=_VOL_W, h=_VOL_H,
+                               r=_VOL_H // 2, fill=navy))
+    for name, bx in _VOL_KEYS.items():
+        cx, cy = rx + bx, ry + _VOL_Y + _VOL_H // 2
+        ink = _WHITE
+        if name in lit:
+            parts.append(_circle(cx=cx, cy=cy, r=28, fill=_hex_to_ass(_WHITE)))
+            parts.append(_circle(cx=cx, cy=cy, r=23, fill=_hex_to_ass(yellow)))
+            ink = navy
+        parts.append(_symbol(name, cx, cy, ink, navy))
+    return "\n".join(parts)
+
+
+def _symbol(name: str, x: float, y: float, ink: str, back: str) -> str:
+    """The little picture on a button, drawn with shapes so it never depends
+    on what the font has. ``back`` is the button colour, for cut-outs."""
+    p = []
+    if name == "power":
+        p.append(_circle(cx=x, cy=y + 2, r=13, fill=_hex_to_ass(ink)))
+        p.append(_circle(cx=x, cy=y + 2, r=9, fill=_hex_to_ass(back)))
+        p.append(_poly([(x - 5, y - 14), (x + 5, y - 14), (x + 5, y - 2), (x - 5, y - 2)], back))
+        p.append(_poly([(x - 2, y - 15), (x + 2, y - 15), (x + 2, y + 1), (x - 2, y + 1)], ink))
+    elif name == "mute":
+        p.append(_poly([(x - 15, y - 5), (x - 9, y - 5), (x - 2, y - 12), (x - 2, y + 12),
+                        (x - 9, y + 5), (x - 15, y + 5)], ink))
+        p.append(_line(x + 3, y - 7, x + 15, y + 7, 3.5, ink))
+        p.append(_line(x + 3, y + 7, x + 15, y - 7, 3.5, ink))
+    elif name in ("rewind", "forward"):
+        d = -1 if name == "rewind" else 1
+        for off in (-7, 7):
+            tip = x + off + d * 7
+            base = x + off - d * 7
+            p.append(_poly([(base, y - 10), (base, y + 10), (tip, y)], ink))
+    elif name == "play":
+        p.append(_poly([(x - 14, y - 10), (x - 14, y + 10), (x - 2, y)], ink))
+        p.append(_poly([(x + 2, y - 10), (x + 6, y - 10), (x + 6, y + 10), (x + 2, y + 10)], ink))
+        p.append(_poly([(x + 10, y - 10), (x + 14, y - 10), (x + 14, y + 10), (x + 10, y + 10)], ink))
+    elif name in ("up", "down", "left", "right"):
+        dx, dy = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}[name]
+        # A chunky chevron pointing (dx, dy).
+        px, py = -dy, dx  # perpendicular
+        tip = (x + dx * 6, y + dy * 6)
+        a = (x - dx * 6 + px * 11, y - dy * 6 + py * 11)
+        b = (x - dx * 6 - px * 11, y - dy * 6 - py * 11)
+        p.append(_line(a[0], a[1], tip[0], tip[1], 4.5, ink))
+        p.append(_line(b[0], b[1], tip[0], tip[1], 4.5, ink))
+    elif name == "back":
+        # A U-turn arrow: along the top, round the right, back along the bottom.
+        p.append(_line(x - 6, y - 6, x + 6, y - 6, 4, ink))
+        p.append(_line(x + 6, y - 6, x + 10, y + 1, 4, ink))
+        p.append(_line(x + 10, y + 1, x + 4, y + 9, 4, ink))
+        p.append(_line(x + 4, y + 9, x - 10, y + 9, 4, ink))
+        p.append(_poly([(x - 6, y - 14), (x - 6, y + 2), (x - 16, y - 6)], ink))
+    elif name == "pointer":
+        p.append(_poly([(x - 9, y - 14), (x - 9, y + 10), (x - 3, y + 4), (x + 2, y + 14),
+                        (x + 7, y + 12), (x + 2, y + 2), (x + 10, y + 2)], ink))
+    elif name == "home":
+        p.append(_poly([(x - 15, y - 1), (x, y - 14), (x + 15, y - 1)], ink))
+        p.append(_poly([(x - 10, y - 2), (x + 10, y - 2), (x + 10, y + 13), (x - 10, y + 13)], ink))
+        p.append(_poly([(x - 3, y + 4), (x + 3, y + 4), (x + 3, y + 13), (x - 3, y + 13)], back))
+    elif name in ("minus", "plus"):
+        p.append(_poly([(x - 11, y - 2.5), (x + 11, y - 2.5), (x + 11, y + 2.5),
+                        (x - 11, y + 2.5)], ink))
+        if name == "plus":
+            p.append(_poly([(x - 2.5, y - 11), (x + 2.5, y - 11), (x + 2.5, y + 11),
+                            (x - 2.5, y + 11)], ink))
+    return "\n".join(p)
+
+
+def _circle(*, cx: float, cy: float, r: float, fill: str) -> str:
+    """A filled circle at absolute canvas coordinates (``fill`` is an ASS
+    colour, like :func:`_dot`). Drawn from the canvas corner rather than
+    centred with ``\\an5``, so big circles land exactly where asked."""
+    c = 0.5523 * r
+    x, y = cx, cy
+    path = (
+        f"m {x:.1f} {y - r:.1f} "
+        f"b {x + c:.1f} {y - r:.1f} {x + r:.1f} {y - c:.1f} {x + r:.1f} {y:.1f} "
+        f"b {x + r:.1f} {y + c:.1f} {x + c:.1f} {y + r:.1f} {x:.1f} {y + r:.1f} "
+        f"b {x - c:.1f} {y + r:.1f} {x - r:.1f} {y + c:.1f} {x - r:.1f} {y:.1f} "
+        f"b {x - r:.1f} {y - c:.1f} {x - c:.1f} {y - r:.1f} {x:.1f} {y - r:.1f}"
+    )
+    return rf"{{\an7\pos(0,0)\p1\c{fill}\1a&H00&\bord0\shad0}}{path}{{\p0}}"
+
+
+def _poly(points, fill: str) -> str:
+    """A filled polygon at absolute canvas points (``fill`` is ``#RRGGBB``)."""
+    pts = [(round(px, 1), round(py, 1)) for px, py in points]
+    path = f"m {pts[0][0]:g} {pts[0][1]:g} l " + " ".join(f"{px:g} {py:g}" for px, py in pts[1:])
+    return rf"{{\an7\pos(0,0)\p1\c{_hex_to_ass(fill)}\1a&H00&\bord0\shad0}}{path}{{\p0}}"
+
+
+def _line(x1: float, y1: float, x2: float, y2: float, width: float, fill: str) -> str:
+    """A thick straight stroke from (x1, y1) to (x2, y2), with square ends."""
+    dx, dy = x2 - x1, y2 - y1
+    length = max((dx * dx + dy * dy) ** 0.5, 0.001)
+    # Half-width offsets across the line, plus a little past each end so
+    # strokes that meet at a corner join up.
+    nx, ny = -dy / length * width / 2, dx / length * width / 2
+    ex, ey = dx / length * width / 2, dy / length * width / 2
+    return _poly([
+        (x1 - ex + nx, y1 - ey + ny), (x2 + ex + nx, y2 + ey + ny),
+        (x2 + ex - nx, y2 + ey - ny), (x1 - ex - nx, y1 - ey - ny),
+    ], fill)
+
+
+def _wrap(text: str, width: int) -> "list[str]":
+    """Break ``text`` into lines of at most about ``width`` characters."""
+    lines: "list[str]" = []
+    current = ""
+    for word in text.split():
+        if current and len(current) + 1 + len(word) > width:
+            lines.append(current)
+            current = word
+        else:
+            current = f"{current} {word}".strip()
+    if current:
+        lines.append(current)
+    return lines
 
 
 def _rounded_rect(*, x: float, y: float, w: float, h: float, r: float, fill: str) -> str:

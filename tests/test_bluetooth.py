@@ -97,7 +97,10 @@ def test_pair_a_remote_from_the_menu(tmp_path):
     app.start()
     send(app, Action.BACK)
     app.menu.screen.cursor = len(app.menu.screen.items) - 1
+    assert app.menu.screen.items[-1].label == "Settings"
+    send(app, Action.ENTER)
     assert app.menu.screen.items[-1].label == "Pair a remote"
+    app.menu.screen.cursor = len(app.menu.screen.items) - 1
     send(app, Action.ENTER)
     assert app.menu.screen.title == "Pair a remote"
     app.pairer.wait(5)

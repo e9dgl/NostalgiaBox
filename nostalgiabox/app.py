@@ -99,7 +99,11 @@ class TVApp:
 
         # The menu and the "shuffle everything" mix both see every show.
         self.shows = build_library(list(self.lineup))
-        self.menu = Menu(self.shows)
+        self.menu = Menu(
+            self.shows,
+            seek_back_seconds=config.seek_back_seconds,
+            seek_forward_seconds=config.seek_forward_seconds,
+        )
         self._menu_deadline = 0.0
         # path -> (show, episode): names and numbers for captions and pause.
         self._episode_info: Dict[Path, Tuple[Show, Episode]] = {

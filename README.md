@@ -431,12 +431,14 @@ NostalgiaBox notices a remote that connects at any time. Reboot once after
 installing (`sudo reboot`) so the remote's power button blanks the screen
 instead of shutting the Pi down. Back opens the menu, Home opens or closes it,
 OK chooses, up/down move, the volume keys change the volume, and play/pause,
-rewind and fast-forward work as you would expect.
+rewind and fast-forward work as you would expect. For a guide on the TV itself,
+open the menu and choose **Settings → How to use the remote**: it draws the
+remote, lights up one button at a time and says what it does.
 
 **Pairing again later, without SSH.** If the remote gets un-paired (new
 batteries, a reset, or a new remote), plug a USB keyboard or mouse into the
 Pi. Press **Esc** (or the right mouse button) to open the menu, scroll to the
-bottom, and choose **Pair a remote**. Put the remote in pairing mode, wait for
+bottom, and choose **Settings → Pair a remote**. Put the remote in pairing mode, wait for
 it to appear in the list (about 20 seconds), and choose it. The box pairs,
 trusts and connects it, and says "is ready" when it is done. On a mouse, the
 wheel moves the highlight, the left button chooses and the right button goes
@@ -514,7 +516,7 @@ it again.
 | Shuffle something new | **Shuffle** (bind the air-mouse remote's mouse button to it, see below). While something is on it pauses and asks "Shuffle something new?"; press OK (or Shuffle again) for a random episode of a random show |
 | Sleep (blank screen) | **Power**, then **Sleep** (or press Power twice). Power again wakes it |
 | **Turn off** (safe to unplug) | **Power**, then **Shut down**, then **Yes, shut down** |
-| Voices out of step with mouths | Menu → **Sound sync**. Left / right move the sound earlier / later in 50 ms steps while the show plays; OK saves it |
+| Voices out of step with mouths | Menu → **Settings → Sound sync**. Left / right move the sound earlier / later in 50 ms steps while the show plays; OK saves it |
 
 New episodes: add files to that show's folder (on the USB drive, or under
 `/media/nostalgiabox/NAME OF SHOW/`). The TV picks them up the next time that
@@ -918,7 +920,7 @@ start_mode: shuffle_all      # shuffle_all | channel   (what plays at power-on)
 menu_timeout: 60             # seconds before an untouched menu closes; 0 = never
 seek_forward_seconds: 30     # fast-forward jump
 seek_back_seconds: 10        # rewind jump
-audio_delay_ms: 0            # sound sync; + = sound later. Menu → Sound sync saves over this
+audio_delay_ms: 0            # sound sync; + = sound later. Menu → Settings → Sound sync saves over this
 hwdec: auto-safe             # try v4l2m2m-copy on a Pi 3 if H.264 stutters
 tune_in: random              # random | resume | broadcast
 order: shuffle               # shuffle | in_order   (shuffle: false = in_order)

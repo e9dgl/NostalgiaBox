@@ -80,6 +80,8 @@ def test_keep_watching(tmp_path):
 # -- sound sync --------------------------------------------------------------
 def _open_sync(app):
     send(app, Action.BACK)
+    app.menu.screen.cursor = _labels(app).index("Settings")
+    send(app, Action.ENTER)
     app.menu.screen.cursor = _labels(app).index("Sound sync")
     send(app, Action.ENTER)
 
