@@ -361,12 +361,15 @@ def help_pages(seek_back: float = 10.0, seek_forward: float = 30.0) -> List[Help
             watching=f"Back {seek_back:g} seconds, or on {seek_forward:g} seconds",
         ),
         HelpPage(
-            "Power and pointer",
-            ("power", "pointer"),
-            note=(
-                "These two don't do anything on the box. Power is for your TV. "
-                "To turn the box off, hold Home."
-            ),
+            "Pointer",
+            ("pointer",),
+            watching="Makes the arrows move a pointer instead. Press it again to switch back.",
+            note="The box tells you if the arrows are in pointer mode.",
+        ),
+        HelpPage(
+            "Power",
+            ("power",),
+            note="This one is for your TV, not the box. To turn the box off, hold Home.",
         ),
         HelpPage(
             "Using the menu",

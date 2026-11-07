@@ -38,11 +38,11 @@ def test_help_screen_steps_through_buttons_and_backs_out(tmp_path):
     _open_help(app)
     assert app.menu.screen.kind == "help"
     assert "Your remote" in player.overlays[5]
-    assert "1 of 13" in player.overlays[5]
+    assert "1 of 14" in player.overlays[5]
 
     send(app, Action.CHANNEL_DOWN)
     assert "Hold OK for a moment to shuffle." in player.overlays[5]
-    assert "2 of 13" in player.overlays[5]
+    assert "2 of 14" in player.overlays[5]
 
     send(app, Action.ENTER)  # OK on a help page does nothing
     assert app.menu.is_open and app.menu.screen.kind == "help"
@@ -66,3 +66,12 @@ def test_turn_off_from_the_menu_opens_the_power_screen(tmp_path):
     send(app, Action.ENTER)
     assert app.menu.is_open and app.menu.screen.kind == "power"
     assert _labels(app) == ["Sleep", "Shut down", "Keep watching"]
+
+
+def test_pointer_hint_shows_over_anything(tmp_path):
+    app, player, _ = _app(tmp_path)
+    app.start()
+    send(app, Action.BACK)                 # even with the menu open
+    send(app, Action.POINTER_MODE)
+    assert "pointer mode" in player.overlays[9]
+    assert app.menu.is_open                # and the menu is left alone

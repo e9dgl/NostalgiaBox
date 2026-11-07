@@ -206,6 +206,11 @@ input:
   #   KEY_HOMEPAGE: power
   #   KEY_SELECT: shuffle
 
+  # Air-mouse remotes: the pointer button turns the arrows into an invisible
+  # mouse pointer. When a remote whose name contains one of these moves its
+  # pointer, the box says how to switch back. false turns it off.
+  # pointer_hint: ["hid remote"]
+
   # Map specific keys to actions (handy for odd remotes). Find a button's key
   # name with `sudo evtest`. Actions: channel_up, channel_down, volume_up,
   # volume_down, mute, enter, back, menu, play_pause, fast_forward, rewind,

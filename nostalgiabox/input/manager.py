@@ -78,7 +78,7 @@ def create_backends(options: Optional[Dict] = None) -> List[InputBackend]:
     backends: List[InputBackend] = []
 
     if options.get("keyboard", True):
-        from .keyboard import KeyboardBackend
+        from .keyboard import DEFAULT_POINTER_HINT_NAMES, KeyboardBackend
         from .keymap import DEFAULT_HOLD_SECONDS, parse_hold_actions, parse_key_overrides
 
         try:
@@ -104,6 +104,9 @@ def create_backends(options: Optional[Dict] = None) -> List[InputBackend]:
                     overrides=overrides,
                     hold_actions=hold_actions,
                     hold_seconds=max(0.3, hold_seconds),
+                    pointer_hint_names=_name_list(
+                        options.get("pointer_hint", DEFAULT_POINTER_HINT_NAMES)
+                    ),
                 )
             )
         else:
@@ -136,3 +139,13 @@ def create_backends(options: Optional[Dict] = None) -> List[InputBackend]:
 
 
 __all__ = ["InputManager", "create_backends"]
+
+
+def _name_list(raw) -> List[str]:
+    """``input.pointer_hint``: device-name parts (a string, a list, or
+    false/none to turn it off)."""
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        return [raw]
+    return [str(item) for item in raw]

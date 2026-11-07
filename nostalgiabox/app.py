@@ -352,6 +352,10 @@ class TVApp:
         if action == Action.POWER:
             self._power_button()
             return
+        if action == Action.POINTER_MODE:
+            if not self.standby:
+                self.overlay.show_pointer_hint()
+            return
         if action == Action.SHUFFLE and not self.standby:
             self._shuffle_button()
             return

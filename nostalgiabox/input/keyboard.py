@@ -39,6 +39,16 @@ _REPEAT_ACTIONS = frozenset({Action.CHANNEL_UP, Action.CHANNEL_DOWN})
 # How often to look for a remote that has just connected (Bluetooth).
 _RESCAN_SECONDS = 2.0
 
+# Air-mouse remotes: the pointer button switches the arrows into moving an
+# invisible mouse pointer, with no light to say so, so the arrows seem broken.
+# When the remote's mouse moves, the app says how to switch back. Movement
+# this far (mouse units, in one burst) counts; a gap this long ends a burst;
+# and the hint is not repeated more often than this.
+_MOTION_GAP = 0.3
+_MOTION_THRESHOLD = 4
+_POINTER_HINT_EVERY = 8.0
+DEFAULT_POINTER_HINT_NAMES = ("hid remote",)
+
 
 def key_event_should_emit(value: int, action: Action, *, allow_repeat: bool) -> bool:
     """Return True when this evdev key state should become one app action.
@@ -70,6 +80,7 @@ class KeyboardBackend(InputBackend):
         overrides: Optional[Dict[str, Optional[InputEvent]]] = None,
         hold_actions: Optional[Dict[str, Optional[InputEvent]]] = None,
         hold_seconds: float = DEFAULT_HOLD_SECONDS,
+        pointer_hint_names: Sequence[str] = (),
     ) -> None:
         super().__init__()
         self._device_paths = list(device_paths) if device_paths else None
@@ -84,6 +95,10 @@ class KeyboardBackend(InputBackend):
         # Keys with a hold job that are down right now:
         # code -> [pressed at, tap event, hold event, hold already fired?]
         self._held: Dict[int, list] = {}
+        # Air-mouse remotes whose pointer movement brings up the hint.
+        self._pointer_hint_names = [n.lower() for n in pointer_hint_names if n]
+        # Pointer movement: [last move, |dx| so far, |dy| so far, last hint, hinted?]
+        self._motion = [0.0, 0, 0, 0.0, False]
         self._devices: List = []
 
     def _lookup(self, key_name: str) -> Optional[InputEvent]:
@@ -162,6 +177,12 @@ class KeyboardBackend(InputBackend):
                             self._handle_key_event(event)
                         elif event.type == ecodes.EV_REL and event.code == ecodes.REL_WHEEL:
                             self._handle_wheel(event.value)
+                        elif event.type == ecodes.EV_REL and self._is_air_mouse(dev):
+                            self._handle_motion(
+                                event.code, event.value, time.monotonic(),
+                                rel_x=getattr(ecodes, "REL_X", 0),
+                                rel_y=getattr(ecodes, "REL_Y", 1),
+                            )
                 except OSError:
                     log.info("input device went away: %s", getattr(dev, "name", "?"))
                     self._drop(dev)
@@ -178,6 +199,30 @@ class KeyboardBackend(InputBackend):
             self.emit(InputEvent(Action.CHANNEL_UP))
         elif value < 0:
             self.emit(InputEvent(Action.CHANNEL_DOWN))
+
+    def _is_air_mouse(self, dev) -> bool:
+        name = (getattr(dev, "name", "") or "").lower()
+        return any(n in name for n in self._pointer_hint_names)
+
+    def _handle_motion(self, code: int, value: int, now: float, *, rel_x: int, rel_y: int) -> None:
+        """The remote's pointer moved: once it has moved a little, ask the
+        app to explain pointer mode (not more than every few seconds)."""
+        if code not in (rel_x, rel_y):
+            return
+        state = self._motion
+        if now - state[0] > _MOTION_GAP:
+            state[1] = state[2] = 0  # a new burst
+        state[0] = now
+        if code == rel_x:
+            state[1] += abs(value)
+        else:
+            state[2] += abs(value)
+        if state[1] + state[2] < _MOTION_THRESHOLD:
+            return
+        if state[4] and now - state[3] < _POINTER_HINT_EVERY:
+            return
+        state[3], state[4] = now, True
+        self.emit(InputEvent(Action.POINTER_MODE))
 
     def _drop(self, dev) -> None:
         """Forget a device that disconnected (a Bluetooth remote going to sleep)."""

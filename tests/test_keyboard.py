@@ -13,6 +13,8 @@ from nostalgiabox.input import keyboard as kb
 
 EV_KEY = 1
 EV_REL = 2
+REL_X = 0
+REL_Y = 1
 REL_WHEEL = 8
 KEY_NAMES = {
     103: "KEY_UP",
@@ -62,7 +64,8 @@ class FakeDevice:
 def fake_evdev(monkeypatch):
     FakeDevice.registry = {}
     ecodes = types.SimpleNamespace(
-        EV_KEY=EV_KEY, EV_REL=EV_REL, REL_WHEEL=REL_WHEEL, KEY=KEY_NAMES, keys=KEY_NAMES
+        EV_KEY=EV_KEY, EV_REL=EV_REL, REL_WHEEL=REL_WHEEL, REL_X=REL_X, REL_Y=REL_Y,
+        KEY=KEY_NAMES, keys=KEY_NAMES
     )
     module = types.SimpleNamespace(
         InputDevice=FakeDevice,
@@ -187,5 +190,29 @@ def test_mouse_click_can_be_held_too(fake_evdev):
         dev.press(272)                         # left click held (pointer mode OK)
         assert _wait_for(lambda: len(events) == 1)
         assert events[0].action == Action.SHUFFLE
+    finally:
+        backend.stop()
+
+
+def test_air_mouse_pointer_movement_asks_for_the_hint_once(fake_evdev):
+    fake_evdev["/dev/input/event7"] = {"name": "HID Remote01 Mouse"}
+    fake_evdev["/dev/input/event8"] = {"name": "USB Mouse"}
+    backend = kb.KeyboardBackend(pointer_hint_names=["hid remote"])
+    events = []
+    backend.emit = events.append
+    backend.start(Queue())
+    try:
+        assert _wait_for(lambda: "device" in fake_evdev["/dev/input/event8"])
+        usb = fake_evdev["/dev/input/event8"]["device"]
+        for _ in range(5):
+            usb.press(REL_X, type=EV_REL, value=10)   # a real mouse: no hint
+        time.sleep(0.2)
+        assert events == []
+        remote = fake_evdev["/dev/input/event7"]["device"]
+        for _ in range(6):
+            remote.press(REL_Y, type=EV_REL, value=-3)
+        assert _wait_for(lambda: events)
+        time.sleep(0.2)
+        assert [e.action for e in events] == [Action.POINTER_MODE]  # not repeated
     finally:
         backend.stop()

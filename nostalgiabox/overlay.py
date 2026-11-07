@@ -57,6 +57,7 @@ _ID_MENU = 5
 _ID_NOW_PLAYING = 6
 _ID_PAUSE = 7
 _ID_SOUND_SYNC = 8
+_ID_POINTER_HINT = 9  # above the menu (5), so it shows there too
 
 # How many menu rows fit on screen at once.
 MENU_ROWS = 5
@@ -150,6 +151,13 @@ class OverlayManager:
         self._player.clear_overlay(_ID_SOUND_SYNC)
         self._expiry.pop(_ID_SOUND_SYNC, None)
 
+    def show_pointer_hint(self, *, duration: float = 6.0) -> None:
+        """The remote is in pointer mode: say how to get the arrows back."""
+        self._player.set_overlay(
+            _ID_POINTER_HINT, _pointer_hint_ass(self._ui), CANVAS_W, CANVAS_H
+        )
+        self._arm(_ID_POINTER_HINT, duration)
+
     def show_standby(self) -> None:
         """Persistent 'standby' notice for when the box is 'off'."""
         ass = _standby_ass(self._ui)
@@ -171,7 +179,7 @@ class OverlayManager:
     def clear_all(self) -> None:
         for overlay_id in (
             _ID_CHANNEL, _ID_VOLUME, _ID_STANDBY, _ID_MESSAGE, _ID_MENU, _ID_NOW_PLAYING,
-            _ID_PAUSE, _ID_SOUND_SYNC,
+            _ID_PAUSE, _ID_SOUND_SYNC, _ID_POINTER_HINT,
         ):
             self._player.clear_overlay(overlay_id)
         self._expiry.clear()
@@ -353,6 +361,24 @@ def _sound_sync_ass(delay_ms: int, ui: UiConfig) -> str:
         rf"<   {_escape(sound_sync_words(delay_ms))}   >",
         rf"{{\an2\pos({cx},{top + h - 10}){_text(ui, size=30, color=_WHITE)}}}"
         r"LEFT = sound earlier      RIGHT = sound later      OK = done",
+    ])
+
+
+def _pointer_hint_ass(ui: UiConfig) -> str:
+    """A card along the bottom: the arrows are moving a pointer instead."""
+    w, h = 900, 150
+    x, top = (CANVAS_W - w) // 2, _IY1 - h
+    bx, by = x + 80, top + h // 2
+    return "\n".join([
+        _rounded_rect(x=x - 6, y=top - 6, w=w + 12, h=h + 12, r=34, fill=_WHITE),
+        _rounded_rect(x=x, y=top, w=w, h=h, r=28, fill=ui.menu_background),
+        # The remote's pointer button, drawn as on the remote, in yellow.
+        _circle(cx=bx, cy=by, r=44, fill=_hex_to_ass(ui.menu_accent)),
+        _symbol("pointer", bx, by, ui.menu_background, ui.menu_accent),
+        rf"{{\an7\pos({x + 150},{top + 22}){_text(ui, size=44, color=ui.menu_accent)}}}"
+        r"The arrows are in pointer mode",
+        rf"{{\an7\pos({x + 150},{top + 80}){_text(ui, size=36, color=_WHITE)}}}"
+        r"Press the pointer button to switch them back",
     ])
 
 
