@@ -397,7 +397,9 @@ class MpvPlayer(Player):
         try:
             raw_pos = self._mpv.time_pos
             position = float(raw_pos) if raw_pos is not None else None
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            if _is_shutdown_error(exc):
+                return PlaybackSample(failed=True, closed=True)
             log.debug("playback sample failed", exc_info=True)
             return PlaybackSample(failed=True)
         return PlaybackSample(
@@ -514,6 +516,7 @@ class MockPlayer(Player):
         self.idle = False
         self.ended = False
         self.fail_sample = False
+        self.closed = False
         self.fail_seek = False
         self.picture: Optional[str] = None
         self.audio_pos: Optional[float] = None
@@ -600,6 +603,8 @@ class MockPlayer(Player):
         self._log(f"AUDIO DELAY {seconds:+.3f}s")
 
     def playback_sample(self) -> PlaybackSample:
+        if self.closed:
+            return PlaybackSample(failed=True, closed=True)
         if self.fail_sample:
             return PlaybackSample(failed=True)
         if self.current is None:
@@ -742,3 +747,9 @@ __all__ = [
     "playback_audio_options",
     "build_mpv_options",
 ]
+
+
+def _is_shutdown_error(exc: BaseException) -> bool:
+    """python-mpv raises ShutdownError ("libmpv core has been shutdown") once
+    mpv has quit. That is the box stopping, not a broken episode."""
+    return type(exc).__name__ == "ShutdownError" or "shutdown" in str(exc).lower()

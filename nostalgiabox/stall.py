@@ -59,6 +59,7 @@ class PlaybackSample:
     idle: bool = False
     ended: bool = False
     failed: bool = False
+    closed: bool = False  # the player itself has shut down (box stopping)
 
 
 @dataclass(frozen=True)

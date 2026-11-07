@@ -62,7 +62,7 @@ from .menu import (
 )
 from .overlay import OverlayManager
 from .playlist import GroupShuffle
-from .player import END_EOF, END_ERROR, MockPlayer, Player
+from .player import END_EOF, END_ERROR, MockPlayer, Player, _is_shutdown_error
 from .stall import PlaybackSample, ProblemLog, Stall, StallWatchdog, problem_directory
 from .volume import resolve_volume_control
 from .static_gen import (
@@ -272,6 +272,7 @@ class TVApp:
         """Run the blocking main loop until a QUIT action is received."""
         self.start()
         self._running = True
+        self._stop_on_sigterm()
         log.info("NostalgiaBox is on the air. %d channels.", len(self.lineup))
         try:
             while self._running:
@@ -280,6 +281,25 @@ class TVApp:
             log.info("interrupted; shutting down")
         finally:
             self.shutdown()
+
+    def _stop_on_sigterm(self) -> None:
+        """``systemctl stop``/``restart`` sends SIGTERM: finish the loop and
+        close the player cleanly, instead of carrying on until systemd gives
+        up and kills the box (which also looked like a frozen episode)."""
+        import signal
+        import threading
+
+        if threading.current_thread() is not threading.main_thread():
+            return
+
+        def _stop(signum, frame):  # noqa: ARG001
+            log.info("asked to stop; shutting down")
+            self._running = False
+
+        try:
+            signal.signal(signal.SIGTERM, _stop)
+        except (ValueError, OSError):  # pragma: no cover - not the main thread
+            pass
 
     def shutdown(self) -> None:
         self._running = False
@@ -1132,9 +1152,18 @@ class TVApp:
             return
         try:
             sample = self.player.playback_sample()
-        except Exception:  # noqa: BLE001
-            log.debug("stall sample failed", exc_info=True)
-            sample = PlaybackSample(failed=True)
+        except Exception as exc:  # noqa: BLE001
+            if _is_shutdown_error(exc):
+                sample = PlaybackSample(failed=True, closed=True)
+            else:
+                log.debug("stall sample failed", exc_info=True)
+                sample = PlaybackSample(failed=True)
+        if sample.closed:
+            # The player itself has gone (the box is being stopped). The
+            # episode is fine; stop the loop instead of flagging it.
+            log.info("the player has shut down; stopping")
+            self._running = False
+            return
         event = self._stall.observe(sample, now)
         if event is not None:
             self._recover_from_stall(event)

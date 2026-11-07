@@ -465,3 +465,49 @@ def test_resume_mode_restarts_where_left(tmp_path):
     send(app, Action.CHANNEL_DOWN)  # back to ch 2 -> resume at 42
     assert player.current == playing
     assert player.played[-1] == (playing, 42.0)
+
+
+def test_player_shutting_down_is_not_blamed_on_the_episode(tmp_path):
+    """When the box is stopped, mpv goes first. That must not flag the file."""
+    state = tmp_path / "state" / "playback.json"
+    app, player, clock = build_app(
+        tmp_path,
+        bridge_seconds=0,
+        stall_timeout=5,
+        stall_grace=0,
+        state_file=str(state),
+    )
+    app.start()
+    app._running = True
+    first = player.current
+    player.closed = True
+    for _ in range(3):
+        clock.advance(5)
+        app.step()
+    assert app._running is False  # the main loop ends
+    assert player.current == first  # no skip
+    assert not (state.parent / "problem-files.log").exists()
+    assert not ProblemLog(state.parent, flag_after=2).is_flagged(first)
+
+
+def test_sigterm_ends_the_main_loop(tmp_path):
+    import os
+    import signal
+
+    app, player, _ = build_app(tmp_path)
+    old = signal.getsignal(signal.SIGTERM)
+    calls = {"n": 0}
+
+    def step(*, block=False, timeout=0.1):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            os.kill(os.getpid(), signal.SIGTERM)
+        assert calls["n"] < 50, "loop kept going after SIGTERM"
+
+    app.step = step
+    try:
+        app.run()
+    finally:
+        signal.signal(signal.SIGTERM, old)
+    assert app._running is False
+    assert calls["n"] <= 2
