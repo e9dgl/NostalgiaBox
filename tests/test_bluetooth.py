@@ -96,8 +96,8 @@ def test_pair_a_remote_from_the_menu(tmp_path):
     app.pairer = BluetoothPairer(fake, search_seconds=1, scan_window=1)
     app.start()
     send(app, Action.BACK)
-    app.menu.screen.cursor = len(app.menu.screen.items) - 1
-    assert app.menu.screen.items[-1].label == "Settings"
+    app.menu.screen.cursor = len(app.menu.screen.items) - 2
+    assert app.menu.screen.items[-2].label == "Settings"
     send(app, Action.ENTER)
     assert app.menu.screen.items[-1].label == "Pair a remote"
     app.menu.screen.cursor = len(app.menu.screen.items) - 1

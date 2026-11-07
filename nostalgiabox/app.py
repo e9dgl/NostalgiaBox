@@ -53,6 +53,7 @@ from .menu import (
     POWER_SLEEP,
     SHUFFLE_ALL,
     SOUND_SYNC,
+    POWER_MENU,
     SHUFFLE_SHOW,
     Choice,
     Menu,
@@ -523,6 +524,8 @@ class TVApp:
             self._power_off("shut down from the power screen")
         elif choice.kind == SOUND_SYNC:
             self._start_sound_sync()
+        elif choice.kind == POWER_MENU:
+            self._power_button()
         elif choice.kind == POWER_CANCEL:
             pass  # the menu has closed; keep watching
 

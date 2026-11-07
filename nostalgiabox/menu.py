@@ -36,6 +36,7 @@ SOUND_SYNC = "sound_sync"      # line the voices up with the mouths
 POWER_SLEEP = "power_sleep"    # blank the screen; Power wakes it
 POWER_SHUTDOWN = "power_shutdown"  # shut the Pi down (after "are you sure?")
 POWER_CANCEL = "power_cancel"  # close the power screen and keep watching
+POWER_MENU = "power_menu"      # open the power screen (same as holding Home)
 
 
 @dataclass(frozen=True)
@@ -232,6 +233,7 @@ class Menu:
                 )
             )
         items.append(MenuItem("Settings", opens=self._settings_screen()))
+        items.append(MenuItem("Turn off", choice=Choice(POWER_MENU), detail="sleep or shut down"))
         return Screen("What do you want to watch?", items)
 
     def _settings_screen(self) -> Screen:
@@ -298,18 +300,17 @@ def help_pages(seek_back: float = 10.0, seek_forward: float = 30.0) -> List[Help
             note="Press DOWN to see what each button does. Press BACK when you're done.",
         ),
         HelpPage(
-            "Power",
-            ("power",),
-            watching="Asks: sleep, or shut down?",
-            in_menu="Asks: sleep, or shut down?",
-            note="Press it twice to sleep. Press it again to wake up.",
-        ),
-        HelpPage(
             "OK",
             ("ok",),
             watching="Opens the menu",
             in_menu="Chooses the yellow one",
-            note="If the show is paused, OK carries on.",
+            note="Hold OK for a moment to shuffle.",
+        ),
+        HelpPage(
+            "Hold OK: Shuffle",
+            ("ok",),
+            watching="Plays a random episode of a random show",
+            note="If something is on, it asks first.",
         ),
         HelpPage(
             "Back",
@@ -322,6 +323,13 @@ def help_pages(seek_back: float = 10.0, seek_forward: float = 30.0) -> List[Help
             ("home",),
             watching="Opens the menu",
             in_menu="Closes the menu",
+            note="Hold Home for a moment to turn the box off.",
+        ),
+        HelpPage(
+            "Hold Home: Turn off",
+            ("home",),
+            watching="Asks: sleep, or shut down?",
+            note="Asleep? Hold Home again to wake it up.",
         ),
         HelpPage(
             "Up and down",
@@ -353,16 +361,18 @@ def help_pages(seek_back: float = 10.0, seek_forward: float = 30.0) -> List[Help
             watching=f"Back {seek_back:g} seconds, or on {seek_forward:g} seconds",
         ),
         HelpPage(
-            "Shuffle",
-            ("pointer",),
-            watching="Plays a random episode of a random show",
-            note="If something is on, it asks first.",
+            "Power and pointer",
+            ("power", "pointer"),
+            note=(
+                "These two don't do anything on the box. Power is for your TV. "
+                "To turn the box off, hold Home."
+            ),
         ),
         HelpPage(
             "Using the menu",
             ("up", "down", "ok", "back"),
             in_menu="Pick a show, then Play from the start, Shuffle, or an episode",
-            note="Shuffle everything, at the top, mixes all the shows.",
+            note="Shuffle everything is at the top. Turn off is at the bottom.",
         ),
     ]
 
@@ -389,4 +399,5 @@ __all__ = [
     "POWER_SLEEP",
     "POWER_SHUTDOWN",
     "POWER_CANCEL",
+    "POWER_MENU",
 ]

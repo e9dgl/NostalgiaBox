@@ -103,6 +103,24 @@ for _d in range(10):
     _EVDEV_ACTIONS[f"KEY_KP{_d}"] = InputEvent.digit(_d)
 
 
+# Holding a button for a moment does a second job. The air-mouse remote's
+# Power and pointer buttons send nothing the Pi can see (Power is infrared
+# for the TV; the pointer only switches the remote's own mode), so holding
+# Home asks to sleep or shut down, and holding OK shuffles. A quick press
+# still does the button's usual job. Change these with ``input.hold_actions``.
+DEFAULT_HOLD_ACTIONS: Dict[str, InputEvent] = {
+    "KEY_HOMEPAGE": InputEvent(Action.POWER),
+    "KEY_HOME": InputEvent(Action.POWER),
+    "KEY_SELECT": InputEvent(Action.SHUFFLE),
+    "KEY_OK": InputEvent(Action.SHUFFLE),
+    "KEY_ENTER": InputEvent(Action.SHUFFLE),
+    "BTN_LEFT": InputEvent(Action.SHUFFLE),
+}
+
+# How long a button must be held for its second job.
+DEFAULT_HOLD_SECONDS = 1.5
+
+
 def evdev_key_to_event(key_name: str) -> Optional[InputEvent]:
     """Map an evdev key name (e.g. ``KEY_VOLUMEUP``) to an InputEvent."""
     return _EVDEV_ACTIONS.get(key_name)
@@ -137,7 +155,17 @@ def action_names() -> tuple[str, ...]:
     return tuple(_ACTION_BY_NAME)
 
 
-def parse_key_overrides(raw: object) -> Dict[str, Optional[InputEvent]]:
+def parse_hold_actions(raw: object) -> Dict[str, Optional[InputEvent]]:
+    """``input.hold_actions``: the defaults, with config entries on top
+    (an entry of ``none`` turns a key's hold job off)."""
+    result: Dict[str, Optional[InputEvent]] = dict(DEFAULT_HOLD_ACTIONS)
+    result.update(parse_key_overrides(raw, setting="hold_actions"))
+    return result
+
+
+def parse_key_overrides(
+    raw: object, *, setting: str = "key_overrides"
+) -> Dict[str, Optional[InputEvent]]:
     """Turn a config ``{KEY_NAME: action_name}`` mapping into key -> InputEvent.
 
     Keys are normalised to evdev names (``f5`` / ``KEY_F5`` both work; a bare
@@ -148,12 +176,15 @@ def parse_key_overrides(raw: object) -> Dict[str, Optional[InputEvent]]:
     if not raw:
         return result
     if not isinstance(raw, dict):
-        raise ValueError("'key_overrides' must be a mapping of KEY_NAME: action")
+        raise ValueError(f"'{setting}' must be a mapping of KEY_NAME: action")
     for key, action in raw.items():
         kname = str(key).strip().upper()
-        if not kname.startswith("KEY_"):
+        if not kname.startswith(("KEY_", "BTN_")):
             kname = "KEY_" + kname
-        aname = str(action).strip().lower()
+        aname = str(action).strip().lower() if action is not None else "none"
+        if aname in ("none", "nothing", "off"):
+            result[kname] = None  # the key does nothing
+            continue
         if aname.startswith("digit_") and aname[6:].isdigit():
             result[kname] = InputEvent.digit(int(aname[6:]))
             continue
@@ -276,5 +307,8 @@ __all__ = [
     "stdin_escape_to_event",
     "cec_key_to_event",
     "parse_key_overrides",
+    "parse_hold_actions",
+    "DEFAULT_HOLD_ACTIONS",
+    "DEFAULT_HOLD_SECONDS",
     "action_names",
 ]

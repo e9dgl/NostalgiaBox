@@ -79,13 +79,22 @@ def create_backends(options: Optional[Dict] = None) -> List[InputBackend]:
 
     if options.get("keyboard", True):
         from .keyboard import KeyboardBackend
-        from .keymap import parse_key_overrides
+        from .keymap import DEFAULT_HOLD_SECONDS, parse_hold_actions, parse_key_overrides
 
         try:
             overrides = parse_key_overrides(options.get("key_overrides"))
         except ValueError as exc:
             log.error("ignoring invalid key_overrides: %s", exc)
             overrides = {}
+        try:
+            hold_actions = parse_hold_actions(options.get("hold_actions"))
+        except ValueError as exc:
+            log.error("ignoring invalid hold_actions: %s", exc)
+            hold_actions = parse_hold_actions(None)
+        try:
+            hold_seconds = float(options.get("hold_seconds", DEFAULT_HOLD_SECONDS))
+        except (TypeError, ValueError):
+            hold_seconds = DEFAULT_HOLD_SECONDS
         if KeyboardBackend.is_available():
             backends.append(
                 KeyboardBackend(
@@ -93,6 +102,8 @@ def create_backends(options: Optional[Dict] = None) -> List[InputBackend]:
                     name_filter=options.get("keyboard_name_filter"),
                     grab=bool(options.get("keyboard_grab", False)),
                     overrides=overrides,
+                    hold_actions=hold_actions,
+                    hold_seconds=max(0.3, hold_seconds),
                 )
             )
         else:

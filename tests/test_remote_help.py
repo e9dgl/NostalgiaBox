@@ -38,11 +38,11 @@ def test_help_screen_steps_through_buttons_and_backs_out(tmp_path):
     _open_help(app)
     assert app.menu.screen.kind == "help"
     assert "Your remote" in player.overlays[5]
-    assert "1 of 12" in player.overlays[5]
+    assert "1 of 13" in player.overlays[5]
 
     send(app, Action.CHANNEL_DOWN)
-    assert "Power" in player.overlays[5]
-    assert "2 of 12" in player.overlays[5]
+    assert "Hold OK for a moment to shuffle." in player.overlays[5]
+    assert "2 of 13" in player.overlays[5]
 
     send(app, Action.ENTER)  # OK on a help page does nothing
     assert app.menu.is_open and app.menu.screen.kind == "help"
@@ -56,3 +56,13 @@ def test_lit_buttons_are_drawn_yellow():
     yellow = "&H003FD2FF"  # #FFD23F as ASS
     assert yellow not in _remote_ass((), ui)
     assert yellow in _remote_ass(("pointer",), ui)
+
+
+def test_turn_off_from_the_menu_opens_the_power_screen(tmp_path):
+    app, player, _ = _app(tmp_path)
+    app.start()
+    send(app, Action.BACK)
+    app.menu.screen.cursor = _labels(app).index("Turn off")
+    send(app, Action.ENTER)
+    assert app.menu.is_open and app.menu.screen.kind == "power"
+    assert _labels(app) == ["Sleep", "Shut down", "Keep watching"]

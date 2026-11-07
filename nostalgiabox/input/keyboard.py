@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Sequence
 
 from ..actions import Action, InputEvent
 from .base import InputBackend
-from .keymap import evdev_key_to_event
+from .keymap import DEFAULT_HOLD_SECONDS, evdev_key_to_event
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +68,8 @@ class KeyboardBackend(InputBackend):
         grab: bool = False,
         allow_repeat: bool = True,
         overrides: Optional[Dict[str, Optional[InputEvent]]] = None,
+        hold_actions: Optional[Dict[str, Optional[InputEvent]]] = None,
+        hold_seconds: float = DEFAULT_HOLD_SECONDS,
     ) -> None:
         super().__init__()
         self._device_paths = list(device_paths) if device_paths else None
@@ -76,6 +78,12 @@ class KeyboardBackend(InputBackend):
         self._allow_repeat = allow_repeat
         # Per-key action overrides from config (key name -> InputEvent or None).
         self._overrides = dict(overrides or {})
+        # Key name -> what holding it does (see keymap.DEFAULT_HOLD_ACTIONS).
+        self._hold_actions = {k: v for k, v in (hold_actions or {}).items() if v is not None}
+        self._hold_seconds = hold_seconds
+        # Keys with a hold job that are down right now:
+        # code -> [pressed at, tap event, hold event, hold already fired?]
+        self._held: Dict[int, list] = {}
         self._devices: List = []
 
     def _lookup(self, key_name: str) -> Optional[InputEvent]:
@@ -136,8 +144,10 @@ class KeyboardBackend(InputBackend):
         next_scan = time.monotonic() + _RESCAN_SECONDS
         while not self.stopping:
             fd_to_device = {dev.fd: dev for dev in self._devices}
+            # While a hold-able key is down, wake often to notice the hold.
+            timeout = 0.05 if self._held else 0.5
             try:
-                r, _, _ = select.select(list(fd_to_device), [], [], 0.5)
+                r, _, _ = select.select(list(fd_to_device), [], [], timeout)
             except (OSError, ValueError):
                 # A device vanished between listing and select: drop dead ones.
                 self._devices = [d for d in self._devices if _is_open(d)]
@@ -155,6 +165,7 @@ class KeyboardBackend(InputBackend):
                 except OSError:
                     log.info("input device went away: %s", getattr(dev, "name", "?"))
                     self._drop(dev)
+            self._check_holds(time.monotonic())
             if time.monotonic() >= next_scan:
                 next_scan = time.monotonic() + _RESCAN_SECONDS
                 self._devices.extend(
@@ -175,9 +186,27 @@ class KeyboardBackend(InputBackend):
         except OSError:
             pass
         self._devices = [d for d in self._devices if d is not dev]
+        # A remote that drops off mid-press never sends the key-up: forget
+        # the press rather than firing its hold job.
+        self._held.clear()
+
+    def _check_holds(self, now: float) -> None:
+        """Fire the hold job of any key held long enough (once per press)."""
+        for state in self._held.values():
+            pressed_at, _tap, hold, fired = state
+            if not fired and now - pressed_at >= self._hold_seconds:
+                state[3] = True
+                log.info("button held: %s", hold.action.name)
+                self.emit(hold)
 
     def _handle_key_event(self, event) -> None:
         from evdev import ecodes
+
+        names = _code_to_names(getattr(ecodes, "keys", ecodes.KEY), event.code)
+        hold = next((self._hold_actions[n] for n in names if n in self._hold_actions), None)
+        if hold is not None or event.code in self._held:
+            self._handle_holdable(event, hold, names)
+            return
 
         # Key-up is ignored here. Volume stops because repeats are not turned
         # into more volume steps (see key_event_should_emit), so the stream
@@ -185,19 +214,14 @@ class KeyboardBackend(InputBackend):
         if event.value == _KEY_UP:
             return
 
-        input_event = None
         # One code can have several names (113 is both KEY_MIN_INTERESTING and
         # KEY_MUTE), so try each until one means something.
         # ``ecodes.keys`` covers KEY_* and BTN_* (mouse buttons) together.
-        for key_name in _code_to_names(getattr(ecodes, "keys", ecodes.KEY), event.code):
-            input_event = self._lookup(key_name)
-            if input_event is not None:
-                break
+        input_event = self._tap_event(names)
         if input_event is None:
             if event.value == 1:
                 # Says which button was pressed, so it can be given a job with
                 # key_overrides (journalctl -u nostalgiabox | grep "does nothing").
-                names = _code_to_names(getattr(ecodes, "keys", ecodes.KEY), event.code)
                 log.info("button %s does nothing (code %d)", "/".join(names) or "?", event.code)
             return
         if not key_event_should_emit(
@@ -205,6 +229,34 @@ class KeyboardBackend(InputBackend):
         ):
             return
         self.emit(input_event)
+
+    def _tap_event(self, names: Sequence[str]) -> Optional[InputEvent]:
+        for key_name in names:
+            input_event = self._lookup(key_name)
+            if input_event is not None:
+                return input_event
+        return None
+
+    def _handle_holdable(self, event, hold: Optional[InputEvent], names) -> None:
+        """A key with a hold job acts when it is let go (a quick press does
+        its usual job) or once it has been held long enough (its hold job)."""
+        if event.value == _KEY_DOWN:
+            if hold is None:
+                return
+            self._held[event.code] = [time.monotonic(), self._tap_event(names), hold, False]
+        elif event.value == _KEY_UP:
+            state = self._held.pop(event.code, None)
+            if state is None:
+                return
+            pressed_at, tap, _hold, fired = state
+            if fired:
+                return
+            if time.monotonic() - pressed_at >= self._hold_seconds:
+                # Held long enough but the loop had not noticed yet.
+                self.emit(_hold)
+            elif tap is not None:
+                self.emit(tap)
+        # Autorepeat (value 2) is ignored: the timer decides when it is a hold.
 
     def _close(self) -> None:
         for dev in self._devices:

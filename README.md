@@ -431,7 +431,10 @@ NostalgiaBox notices a remote that connects at any time. Reboot once after
 installing (`sudo reboot`) so the remote's power button blanks the screen
 instead of shutting the Pi down. Back opens the menu, Home opens or closes it,
 OK chooses, up/down move, the volume keys change the volume, and play/pause,
-rewind and fast-forward work as you would expect. For a guide on the TV itself,
+rewind and fast-forward work as you would expect. **Hold OK** for a moment to
+shuffle, and **hold Home** to turn the box off (sleep or shut down): the air-mouse
+remote's own Power and pointer buttons send nothing the Pi can see, so they do
+nothing on the box. The menu also ends with **Turn off**. For a guide on the TV itself,
 open the menu and choose **Settings → How to use the remote**: it draws the
 remote, lights up one button at a time and says what it does.
 

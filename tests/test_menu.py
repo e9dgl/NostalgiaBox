@@ -103,7 +103,7 @@ def test_top_level_is_shuffle_then_shows(tmp_path):
     menu.open()
     labels = [i.label for i in menu.screen.items]
     assert labels == [
-        "Shuffle everything", "Arthur", "Pingu", "The Raccoons", "Settings"
+        "Shuffle everything", "Arthur", "Pingu", "The Raccoons", "Settings", "Turn off"
     ]
     assert menu.select().kind == SHUFFLE_ALL
 
@@ -167,7 +167,7 @@ def test_cursor_wraps(tmp_path):
     menu = _menu(tmp_path)
     menu.open()
     menu.move(-1)
-    assert menu.screen.items[menu.screen.cursor].label == "Settings"
+    assert menu.screen.items[menu.screen.cursor].label == "Turn off"
 
 
 def test_visible_window_keeps_cursor_on_screen(tmp_path):

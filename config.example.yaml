@@ -90,8 +90,8 @@ seek_forward_seconds: 30
 seek_back_seconds: 10
 
 # --- Shuffle button -------------------------------------------------------------
-# The remote button that means "a random episode of a random show". Press the
-# button, then find its name with:
+# Holding OK already shuffles (see input.hold_actions). To give shuffle a
+# button of its own as well, press the button, then find its name with:
 #   journalctl -u nostalgiabox -n 20 --no-pager | grep "does nothing"
 # shuffle_button: KEY_F12
 
@@ -195,6 +195,16 @@ input:
   # keyboard_name_filter: "remote"   # only listen to devices whose name matches
   # keyboard_devices: ["/dev/input/event0"]  # or pin exact devices
   # keyboard_grab: false             # true = stop keystrokes leaking to console
+
+  # Holding a button for a moment does a second job (a quick press still does
+  # the usual one). Out of the box: hold Home = turn off (sleep or shut
+  # down), hold OK = shuffle, because the air-mouse remote's own Power and
+  # pointer buttons send nothing the Pi can see. Same action names as below;
+  # "none" turns a hold off.
+  # hold_seconds: 1.5
+  # hold_actions:
+  #   KEY_HOMEPAGE: power
+  #   KEY_SELECT: shuffle
 
   # Map specific keys to actions (handy for odd remotes). Find a button's key
   # name with `sudo evtest`. Actions: channel_up, channel_down, volume_up,
