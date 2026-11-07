@@ -139,8 +139,11 @@ def test_stall_watch_defaults_leave_shuffle_in_place(tmp_path):
 def test_ui_and_playback_defaults(tmp_path):
     make_show(tmp_path, "a", 1)
     cfg = config_from_dict({"channels": [{"path": str(tmp_path / "a")}]})
-    assert cfg.initial_volume == 100
-    assert cfg.volume_control == "auto"
+    assert cfg.initial_volume == 80
+    assert cfg.volume_step == 10
+    assert cfg.volume_reset_each_episode is True
+    assert cfg.volume_control == "pi"
+    assert cfg.power_off_on_min_volume is False
     assert cfg.order == "shuffle"
     assert cfg.ui.font == "Fredoka SemiBold"
     assert cfg.ui.color == "#FFD23F"

@@ -18,6 +18,7 @@ def build_app(tmp_path, *, assets_dir=None, **overrides):
         "start_offset": 0,  # keep test assertions on start=0 unless overridden
         "power_off_command": [],  # no-op in tests (never actually shut down)
         "start_mode": "channel",  # most tests drive the channel lineup
+        "volume_step": 5,  # the volume tests count in fives
         "channels": [
             {"number": 2, "name": "Dragon Tales", "path": str(tmp_path / "dragon")},
             {"number": 3, "name": "Arthur", "path": str(tmp_path / "arthur")},
@@ -47,7 +48,7 @@ def test_start_tunes_to_start_channel_and_plays(tmp_path):
     app.start()
     assert app.lineup.current.number == 2
     assert player.current is not None  # an episode is playing
-    assert player.volume == 100
+    assert player.volume == 80
     assert player.overlays.get(1) and "Dragon Tales" in player.overlays[1]
 
 
@@ -86,7 +87,9 @@ def test_volume_clamps(tmp_path):
 
 
 def test_volume_down_at_zero_powers_off(tmp_path):
-    app, player, _ = build_app(tmp_path, initial_volume=10, volume_step=5)
+    app, player, _ = build_app(
+        tmp_path, initial_volume=10, volume_step=5, power_off_on_min_volume=True
+    )
     app.start()
     send(app, Action.VOLUME_DOWN)   # 10 -> 5
     send(app, Action.VOLUME_DOWN)   # 5 -> 0
@@ -511,3 +514,99 @@ def test_sigterm_ends_the_main_loop(tmp_path):
         signal.signal(signal.SIGTERM, old)
     assert app._running is False
     assert calls["n"] <= 2
+
+
+# -- Dannii's button changes (2026-11-07) -------------------------------------
+
+def test_ok_pauses_and_carries_on_while_watching(tmp_path):
+    app, player, _ = build_app(tmp_path)
+    app.start()
+    send(app, Action.ENTER)
+    assert app.paused and player.paused
+    assert not app.menu.is_open
+    send(app, Action.ENTER)
+    assert not app.paused
+
+
+def test_left_and_right_do_nothing_while_watching(tmp_path):
+    app, player, _ = build_app(tmp_path, initial_volume=80)
+    app.start()
+    first = player.current
+    send(app, Action.LEFT)
+    send(app, Action.RIGHT)
+    assert app.volume == 80
+    assert player.current == first
+    assert not app.menu.is_open and not app.paused
+
+
+def test_left_goes_back_and_right_chooses_in_the_menu(tmp_path):
+    app, player, _ = build_app(tmp_path)
+    app.start()
+    send(app, Action.BACK)                 # open the menu
+    top = app.menu.screen
+    send(app, Action.CHANNEL_DOWN)         # a show
+    send(app, Action.RIGHT)                # into it, like OK
+    assert app.menu.is_open and app.menu.screen is not top
+    send(app, Action.LEFT)                 # back a step, like Back
+    assert app.menu.screen is top
+    send(app, Action.LEFT)                 # back out of the top closes it
+    assert not app.menu.is_open
+
+
+def test_pointer_mode_blocks_the_buttons_until_the_arrows_come_back(tmp_path):
+    app, player, clock = build_app(tmp_path)
+    app.start()
+    first = player.current
+    send(app, Action.POINTER_MODE)
+    assert "Pointer mode is on" in player.overlays[9]
+    send(app, Action.BACK)
+    send(app, Action.PLAY_PAUSE)
+    send(app, Action.CHANNEL_UP)
+    assert not app.menu.is_open and not app.paused
+    assert player.current == first
+    del player.overlays[9]
+    send(app, Action.VOLUME_UP)            # blocked, and the card comes back
+    assert 9 in player.overlays
+    send(app, Action.POINTER_OFF)          # the remote sent a normal arrow
+    assert 9 not in player.overlays
+    send(app, Action.PLAY_PAUSE)
+    assert app.paused
+
+
+def test_pointer_lock_ends_by_itself_after_a_quiet_spell(tmp_path):
+    app, player, clock = build_app(tmp_path)
+    app.start()
+    send(app, Action.POINTER_MODE)
+    clock.advance(app._POINTER_LOCK_SECONDS + 1)
+    send(app, Action.PLAY_PAUSE)
+    assert app.paused
+
+
+def test_each_new_episode_starts_at_the_usual_level(tmp_path):
+    app, player, _ = build_app(tmp_path, initial_volume=80, volume_step=10)
+    app.start()
+    send(app, Action.VOLUME_UP)
+    send(app, Action.VOLUME_UP)
+    assert app.volume == 100 and player.volume == 100
+    player.finish_current()
+    app.step()
+    assert app.volume == 80 and player.volume == 80
+
+
+def test_pause_card_has_a_timeline_that_moves_with_seeks(tmp_path):
+    app, player, _ = build_app(tmp_path, seek_forward_seconds=30)
+    app.start()
+    player.duration = 1500.0               # 25:00
+    player.time_pos = 300.0                # 5:00
+    send(app, Action.PLAY_PAUSE)
+    card = player.overlays[7]
+    assert "0:00" in card and "25:00" in card and "5:00" in card
+    send(app, Action.FAST_FORWARD)
+    assert "5:30" in player.overlays[7]
+
+
+def test_pause_card_without_a_known_length_has_no_timeline(tmp_path):
+    app, player, _ = build_app(tmp_path)
+    app.start()
+    send(app, Action.PLAY_PAUSE)
+    assert "0:00" not in player.overlays[7]

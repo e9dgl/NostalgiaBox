@@ -10,6 +10,7 @@ import pytest
 
 from nostalgiabox.actions import Action
 from nostalgiabox.input import keyboard as kb
+from nostalgiabox.input.keymap import DEFAULT_HOLD_ACTIONS
 
 EV_KEY = 1
 EV_REL = 2
@@ -214,5 +215,34 @@ def test_air_mouse_pointer_movement_asks_for_the_hint_once(fake_evdev):
         assert _wait_for(lambda: events)
         time.sleep(0.2)
         assert [e.action for e in events] == [Action.POINTER_MODE]  # not repeated
+    finally:
+        backend.stop()
+
+
+def test_air_mouse_click_means_pointer_mode_and_arrows_end_it(fake_evdev):
+    fake_evdev["/dev/input/event9"] = {"name": "HID Remote01 Mouse"}
+    fake_evdev["/dev/input/event10"] = {"name": "HID Remote01 Keyboard"}
+    backend = kb.KeyboardBackend(
+        pointer_hint_names=["hid remote"], hold_actions=dict(DEFAULT_HOLD_ACTIONS)
+    )
+    events = []
+    backend.emit = events.append
+    backend.start(Queue())
+    try:
+        assert _wait_for(lambda: "device" in fake_evdev["/dev/input/event10"])
+        mouse = fake_evdev["/dev/input/event9"]["device"]
+        keys = fake_evdev["/dev/input/event10"]["device"]
+        mouse.press(272)                     # OK in pointer mode: a click
+        mouse.press(272, value=0)
+        assert _wait_for(lambda: events)
+        time.sleep(0.3)
+        assert [e.action for e in events] == [Action.POINTER_MODE]  # not OK, not shuffle
+        keys.press(103)                      # a normal Up: pointer mode is off
+        keys.press(103, value=0)
+        assert _wait_for(lambda: len(events) == 3)
+        assert [e.action for e in events][1:] == [Action.POINTER_OFF, Action.CHANNEL_UP]
+        keys.press(103)                      # and then just Up
+        assert _wait_for(lambda: len(events) == 4)
+        assert events[3].action == Action.CHANNEL_UP
     finally:
         backend.stop()

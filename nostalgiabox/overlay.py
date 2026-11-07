@@ -128,13 +128,21 @@ class OverlayManager:
         self._player.clear_overlay(_ID_MENU)
         self._expiry.pop(_ID_MENU, None)
 
-    def show_paused(self, show: str, code: str, episode: str) -> None:
-        """The pause card: show, series and episode numbers, episode name."""
+    def show_paused(
+        self,
+        show: str,
+        code: str,
+        episode: str,
+        *,
+        position: Optional[float] = None,
+        duration: Optional[float] = None,
+    ) -> None:
+        """The pause card: show, series and episode numbers, episode name,
+        and a timeline along the bottom when the length is known."""
         self._player.clear_overlay(_ID_NOW_PLAYING)
         self._expiry.pop(_ID_NOW_PLAYING, None)
-        self._player.set_overlay(
-            _ID_PAUSE, _pause_ass(show, code, episode, self._ui), CANVAS_W, CANVAS_H
-        )
+        ass = _pause_ass(show, code, episode, self._ui, position=position, duration=duration)
+        self._player.set_overlay(_ID_PAUSE, ass, CANVAS_W, CANVAS_H)
         self._expiry.pop(_ID_PAUSE, None)
 
     def clear_pause(self) -> None:
@@ -157,6 +165,10 @@ class OverlayManager:
             _ID_POINTER_HINT, _pointer_hint_ass(self._ui), CANVAS_W, CANVAS_H
         )
         self._arm(_ID_POINTER_HINT, duration)
+
+    def clear_pointer_hint(self) -> None:
+        self._player.clear_overlay(_ID_POINTER_HINT)
+        self._expiry.pop(_ID_POINTER_HINT, None)
 
     def show_standby(self) -> None:
         """Persistent 'standby' notice for when the box is 'off'."""
@@ -307,10 +319,61 @@ def _now_playing_ass(show: str, episode: str, ui: UiConfig) -> str:
     ])
 
 
-def _pause_ass(show: str, code: str, episode: str, ui: UiConfig) -> str:
+def clock_text(seconds: float) -> str:
+    """``0:00``, ``4:05``, ``1:02:03``."""
+    total = max(0, int(seconds))
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+def _timeline_ass(position: float, duration: float, ui: UiConfig) -> str:
+    """A bar from 0:00 to the end, filled up to a marker at how far through."""
+    x, w, h = _IX0, _IX1 - _IX0, 104
+    top = _IY1 - h
+    left, right = x + 140, x + w - 140
+    bar_y, bar_h = top + 66, 16
+    frac = max(0.0, min(1.0, position / duration)) if duration > 0 else 0.0
+    mark = left + (right - left) * frac
+    label_x = max(left + 60, min(right - 60, mark))
+    parts = [
+        _rounded_rect(x=x, y=top, w=w, h=h, r=28, fill=ui.menu_background),
+        # The whole episode, then the part already watched in yellow.
+        _rounded_rect(x=left, y=bar_y - bar_h / 2, w=right - left, h=bar_h, r=8,
+                      fill=ui.menu_tile),
+    ]
+    if mark - left >= bar_h:
+        parts.append(
+            _rounded_rect(x=left, y=bar_y - bar_h / 2, w=mark - left, h=bar_h, r=8,
+                          fill=ui.menu_accent)
+        )
+    parts += [
+        _circle(cx=mark, cy=bar_y, r=20, fill=_hex_to_ass(_WHITE)),
+        _circle(cx=mark, cy=bar_y, r=14, fill=_hex_to_ass(ui.menu_accent)),
+        rf"{{\an6\pos({left - 26},{bar_y}){_text(ui, size=32, color=_SOFT)}}}0:00",
+        rf"{{\an4\pos({right + 26},{bar_y}){_text(ui, size=32, color=_WHITE)}}}"
+        rf"{clock_text(duration)}",
+        rf"{{\an2\pos({label_x:.0f},{bar_y - 26}){_text(ui, size=34, color=ui.menu_accent)}}}"
+        rf"{clock_text(position)}",
+    ]
+    return "\n".join(parts)
+
+
+def _pause_ass(
+    show: str,
+    code: str,
+    episode: str,
+    ui: UiConfig,
+    *,
+    position: Optional[float] = None,
+    duration: Optional[float] = None,
+) -> str:
     """Paused: the picture dims and a card says what is on."""
+    timeline = duration is not None and duration > 0
     w, h = 900, 380
-    x, y = (CANVAS_W - w) // 2, (CANVAS_H - h) // 2
+    x, y = (CANVAS_W - w) // 2, (CANVAS_H - h) // 2 - (50 if timeline else 0)
     cx = CANVAS_W // 2
     parts = [
         # Dim the frozen picture so the card stands out.
@@ -338,6 +401,8 @@ def _pause_ass(show: str, code: str, episode: str, ui: UiConfig) -> str:
         rf"{{\an2\pos({cx},{y + h - 24}){_text(ui, size=30, color=_SOFT)}}}"
         rf"Press PLAY or OK to carry on"
     )
+    if timeline:
+        parts.append(_timeline_ass(position or 0.0, float(duration), ui))
     return "\n".join(parts)
 
 
@@ -376,9 +441,9 @@ def _pointer_hint_ass(ui: UiConfig) -> str:
         _circle(cx=bx, cy=by, r=44, fill=_hex_to_ass(ui.menu_accent)),
         _symbol("pointer", bx, by, ui.menu_background, ui.menu_accent),
         rf"{{\an7\pos({x + 150},{top + 22}){_text(ui, size=44, color=ui.menu_accent)}}}"
-        r"The arrows are in pointer mode",
+        r"Pointer mode is on",
         rf"{{\an7\pos({x + 150},{top + 80}){_text(ui, size=36, color=_WHITE)}}}"
-        r"Press the pointer button to switch them back",
+        r"Press the pointer button to use the buttons",
     ])
 
 

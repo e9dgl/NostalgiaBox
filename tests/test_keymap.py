@@ -47,8 +47,8 @@ def test_stdin_chars():
 def test_stdin_arrows():
     assert stdin_escape_to_event("[A").action == Action.CHANNEL_UP
     assert stdin_escape_to_event("[B").action == Action.CHANNEL_DOWN
-    assert stdin_escape_to_event("[C").action == Action.VOLUME_UP
-    assert stdin_escape_to_event("[D").action == Action.VOLUME_DOWN
+    assert stdin_escape_to_event("[C").action == Action.RIGHT
+    assert stdin_escape_to_event("[D").action == Action.LEFT
     assert stdin_escape_to_event("[Z") is None
 
 

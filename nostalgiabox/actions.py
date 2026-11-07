@@ -33,7 +33,10 @@ class Action(Enum):
     FAST_FORWARD = auto()   # jump ahead a little
     REWIND = auto()         # jump back a little
     SHUFFLE = auto()        # a random episode of a random show (asks first)
-    POINTER_MODE = auto()   # an air mouse moved its pointer: say how to switch back
+    LEFT = auto()           # menu: back a step. Watching: nothing
+    RIGHT = auto()          # menu: choose. Watching: nothing
+    POINTER_MODE = auto()   # an air mouse is in pointer mode: block buttons, say how to switch back
+    POINTER_OFF = auto()    # the air mouse is back to normal arrows
     QUIT = auto()           # shut the application down entirely
 
 

@@ -308,7 +308,7 @@ def test_menu_back_out_and_idle_timeout(tmp_path):
     send(app, Action.BACK)
     send(app, Action.BACK)                # Back at the top closes it
     assert not app.menu.is_open
-    send(app, Action.ENTER)               # OK also opens it
+    send(app, Action.MENU)                # Home also opens it
     assert app.menu.is_open
     clock.advance(31)
     app.step()
@@ -321,7 +321,7 @@ def test_volume_works_with_menu_open(tmp_path):
     app.start()
     send(app, Action.BACK)
     send(app, Action.VOLUME_UP)
-    assert app.volume == 55
+    assert app.volume == 60
     assert app.menu.is_open
 
 

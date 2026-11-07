@@ -78,13 +78,28 @@ def test_level_is_restored_when_a_new_file_resets_the_player(tmp_path):
     player.play = play_and_drop
     player.finish_current()
     app.step()
-    assert app.volume == 75
-    assert player.volume == 75
+    # A new episode starts back at the usual level, and mpv is told it.
+    assert app.volume == 80
+    assert player.volume == 80
     assert player.muted is False
 
 
+def test_level_carries_on_when_reset_is_turned_off(tmp_path):
+    app, player, _ = build_app(
+        tmp_path, initial_volume=80, volume_step=5, volume_reset_each_episode=False
+    )
+    app.start()
+    send(app, Action.VOLUME_DOWN)
+    player.finish_current()
+    app.step()
+    assert app.volume == 75
+    assert player.volume == 75
+
+
 def test_level_survives_a_channel_change(tmp_path):
-    app, player, clock = build_app(tmp_path, initial_volume=70, volume_step=5)
+    app, player, clock = build_app(
+        tmp_path, initial_volume=70, volume_step=5, volume_reset_each_episode=False
+    )
     app.start()
     send(app, Action.VOLUME_UP)  # 75
     send(app, Action.CHANNEL_UP)  # preloads; the cut happens after the bridge
@@ -128,6 +143,7 @@ def _app_with_cec(tmp_path, cec, **overrides):
         "start_offset": 0,
         "power_off_command": [],
         "initial_volume": 100,
+        "volume_step": 5,
         "channels": [
             {"number": 2, "name": "Dragon Tales", "path": str(tmp_path / "dragon")},
             {"number": 3, "name": "Arthur", "path": str(tmp_path / "arthur")},

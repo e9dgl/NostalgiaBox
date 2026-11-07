@@ -41,12 +41,19 @@ _RESCAN_SECONDS = 2.0
 
 # Air-mouse remotes: the pointer button switches the arrows into moving an
 # invisible mouse pointer, with no light to say so, so the arrows seem broken.
-# When the remote's mouse moves, the app says how to switch back. Movement
+# The pointer button itself sends nothing, so the first sign is the pointer
+# moving or clicking. From then on the app blocks the buttons and says how to
+# switch back, until the remote sends a normal arrow or OK again. Movement
 # this far (mouse units, in one burst) counts; a gap this long ends a burst;
-# and the hint is not repeated more often than this.
+# and the reminder is not repeated more often than this.
 _MOTION_GAP = 0.3
-_MOTION_THRESHOLD = 4
-_POINTER_HINT_EVERY = 8.0
+_MOTION_THRESHOLD = 2
+_POINTER_HINT_EVERY = 3.0
+# Keys an air mouse only sends with normal arrows: seeing one means pointer
+# mode is off again.
+_NORMAL_MODE_KEYS = frozenset({
+    "KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "KEY_SELECT", "KEY_OK", "KEY_ENTER",
+})
 DEFAULT_POINTER_HINT_NAMES = ("hid remote",)
 
 
@@ -99,6 +106,9 @@ class KeyboardBackend(InputBackend):
         self._pointer_hint_names = [n.lower() for n in pointer_hint_names if n]
         # Pointer movement: [last move, |dx| so far, |dy| so far, last hint, hinted?]
         self._motion = [0.0, 0, 0, 0.0, False]
+        # True once an air mouse has moved its pointer or clicked, until it
+        # sends a normal arrow or OK again.
+        self._pointer_on = False
         self._devices: List = []
 
     def _lookup(self, key_name: str) -> Optional[InputEvent]:
@@ -174,7 +184,7 @@ class KeyboardBackend(InputBackend):
                 try:
                     for event in dev.read():
                         if event.type == ecodes.EV_KEY:
-                            self._handle_key_event(event)
+                            self._handle_key_event(event, dev)
                         elif event.type == ecodes.EV_REL and event.code == ecodes.REL_WHEEL:
                             self._handle_wheel(event.value)
                         elif event.type == ecodes.EV_REL and self._is_air_mouse(dev):
@@ -219,8 +229,15 @@ class KeyboardBackend(InputBackend):
             state[2] += abs(value)
         if state[1] + state[2] < _MOTION_THRESHOLD:
             return
-        if state[4] and now - state[3] < _POINTER_HINT_EVERY:
+        self._pointer_mode_seen(now)
+
+    def _pointer_mode_seen(self, now: float, *, always: bool = False) -> None:
+        """The air mouse is in pointer mode: tell the app straight away the
+        first time, then remind it now and then while it carries on."""
+        state = self._motion
+        if self._pointer_on and not always and now - state[3] < _POINTER_HINT_EVERY:
             return
+        self._pointer_on = True
         state[3], state[4] = now, True
         self.emit(InputEvent(Action.POINTER_MODE))
 
@@ -244,10 +261,20 @@ class KeyboardBackend(InputBackend):
                 log.info("button held: %s", hold.action.name)
                 self.emit(hold)
 
-    def _handle_key_event(self, event) -> None:
+    def _handle_key_event(self, event, dev=None) -> None:
         from evdev import ecodes
 
         names = _code_to_names(getattr(ecodes, "keys", ecodes.KEY), event.code)
+        if dev is not None and self._is_air_mouse(dev):
+            if any(n.startswith("BTN_") for n in names):
+                # A click from the air mouse only happens in pointer mode.
+                if event.value == _KEY_DOWN:
+                    self._pointer_mode_seen(time.monotonic(), always=True)
+                return
+            if self._pointer_on and event.value == _KEY_DOWN and _NORMAL_MODE_KEYS & set(names):
+                self._pointer_on = False
+                log.info("air mouse back to normal arrows")
+                self.emit(InputEvent(Action.POINTER_OFF))
         hold = next((self._hold_actions[n] for n in names if n in self._hold_actions), None)
         if hold is not None or event.code in self._held:
             self._handle_holdable(event, hold, names)

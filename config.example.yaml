@@ -142,19 +142,21 @@ ui:
 hwdec: auto-safe
 
 # --- Audio -------------------------------------------------------------------
-# 100 leaves the Pi at full output so the TV's volume buttons (or the TV's own
-# remote) are the real knob. Drop this only if you want the Pi to attenuate.
-initial_volume: 100       # 0-100
-volume_step: 5            # Pi mode: how much each volume press changes it
-# Who the Flirc volume keys control.
+# The box's own sound level. Every new episode starts back at initial_volume,
+# and each press of volume + or - moves it by volume_step.
+initial_volume: 80        # 0-100
+volume_step: 10           # how much each volume press changes it
+volume_reset_each_episode: true
+# Who the remote's volume and mute buttons control.
+#   pi    - the box's own sound, with the on-screen bar (the default). The
+#           TV's volume stays where you set it.
 #   auto  - the TV over HDMI-CEC when cec-client finds a television. If there
-#           is no CEC TV, the Pi volume is used and nothing is shown on screen.
-#   tv    - ask for the TV; fall back to the Pi when no television answers
-#   pi    - the on-screen bar and mpv. The TV's volume stays where you set it.
+#           is no CEC TV, the box's sound is used.
+#   tv    - ask for the TV; fall back to the box when no television answers
 # Flirc has no CEC mode of its own. Program it as in the README (Right = volume
 # up, Left = volume down, m = mute). The TV must have CEC turned on (Anynet+,
 # SimpLink, BRAVIA Sync, or the set's "HDMI control" name).
-volume_control: auto
+volume_control: pi
 # Where the sound goes. Left out (or "auto"), it follows the TV: the box finds
 # the HDMI port with a TV on it and uses that port for picture, sound and the
 # TV remote, so either micro-HDMI port on a Pi 4 works. A vc4hdmi setting is
@@ -166,7 +168,9 @@ volume_control: auto
 # off the Pi so it's safe to unplug (needs the sudo rule from
 # scripts/install-service.sh). In tv/auto mode the volume keys never move the
 # Pi level, so they cannot shut the box down — use standby, or `sudo poweroff`.
-power_off_on_min_volume: true
+# Off by default: a child pressing volume down a few times would switch the
+# box off. Hold Home to turn it off instead.
+power_off_on_min_volume: false
 # power_off_command: ["sudo", "poweroff"]   # override the shutdown command
 
 # --- Playback ----------------------------------------------------------------

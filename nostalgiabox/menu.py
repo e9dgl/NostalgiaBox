@@ -302,7 +302,7 @@ def help_pages(seek_back: float = 10.0, seek_forward: float = 30.0) -> List[Help
         HelpPage(
             "OK",
             ("ok",),
-            watching="Opens the menu",
+            watching="Pauses, and shows how far through",
             in_menu="Chooses the yellow one",
             note="Hold OK for a moment to shuffle.",
         ),
@@ -338,10 +338,16 @@ def help_pages(seek_back: float = 10.0, seek_forward: float = 30.0) -> List[Help
             in_menu="Moves up and down the list",
         ),
         HelpPage(
+            "Left and right",
+            ("left", "right"),
+            watching="Do nothing, so the show keeps going",
+            in_menu="Left goes back a step. Right chooses the yellow one.",
+        ),
+        HelpPage(
             "Volume",
-            ("left", "right", "minus", "plus"),
-            watching="Left or minus is quieter. Right or plus is louder.",
-            in_menu="Quieter and louder, too",
+            ("minus", "plus"),
+            watching="Minus is quieter. Plus is louder.",
+            note="Each new episode starts at the usual sound level.",
         ),
         HelpPage(
             "Mute",
@@ -352,7 +358,7 @@ def help_pages(seek_back: float = 10.0, seek_forward: float = 30.0) -> List[Help
         HelpPage(
             "Play and pause",
             ("play",),
-            watching="Pauses, and says what's on",
+            watching="Pauses, and shows how far through",
             note="Press it again, or OK, to carry on.",
         ),
         HelpPage(
@@ -363,8 +369,8 @@ def help_pages(seek_back: float = 10.0, seek_forward: float = 30.0) -> List[Help
         HelpPage(
             "Pointer",
             ("pointer",),
-            watching="Makes the arrows move a pointer instead. Press it again to switch back.",
-            note="The box tells you if the arrows are in pointer mode.",
+            watching="Turns pointer mode on. The other buttons stop working.",
+            note="Press it again to switch it off and use the buttons.",
         ),
         HelpPage(
             "Power",

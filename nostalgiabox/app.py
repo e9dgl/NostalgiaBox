@@ -143,6 +143,11 @@ class TVApp:
         # leaving that screen carries on (and a pause the viewer chose stays).
         self._held_paused = False
         self._pairing_version = -1
+        # While the air mouse is in pointer mode the buttons are blocked.
+        # Ends when it sends normal arrows again, or after a quiet spell.
+        self._pointer_lock_until = 0.0
+        # The episode the volume was last reset for (see _new_episode_volume).
+        self._volume_path: Optional[Path] = None
 
         # Runtime state. ``volume`` / ``muted`` are the only Pi level. mpv is
         # told this number at startup and again after every file; it is not
@@ -282,6 +287,22 @@ class TVApp:
         finally:
             self.shutdown()
 
+    # How long the buttons stay blocked after the last sign of pointer mode.
+    _POINTER_LOCK_SECONDS = 30.0
+
+    def _pointer_locked(self) -> bool:
+        if self._pointer_lock_until <= 0:
+            return False
+        if self._clock() >= self._pointer_lock_until:
+            self._end_pointer_lock()
+            return False
+        return True
+
+    def _end_pointer_lock(self) -> None:
+        if self._pointer_lock_until > 0:
+            self._pointer_lock_until = 0.0
+            self.overlay.clear_pointer_hint()
+
     def _stop_on_sigterm(self) -> None:
         """``systemctl stop``/``restart`` sends SIGTERM: finish the loop and
         close the player cleanly, instead of carrying on until systemd gives
@@ -356,6 +377,7 @@ class TVApp:
                 # The cut landed on the preloaded episode. Watch that file,
                 # not the one that was on screen during the bridge.
                 self._arm_stall(self._playing_path)
+            self._new_episode_volume(self._playing_path)
             self._apply_output_volume()
             # Flash the channel banner right as the picture actually changes.
             if self._pending_banner is not None:
@@ -373,8 +395,18 @@ class TVApp:
             self._power_button()
             return
         if action == Action.POINTER_MODE:
+            # The remote's arrows now move a pointer. Block the buttons and
+            # say how to switch back, until the remote sends normal arrows.
+            self._pointer_lock_until = self._clock() + self._POINTER_LOCK_SECONDS
             if not self.standby:
-                self.overlay.show_pointer_hint()
+                self.overlay.show_pointer_hint(duration=self._POINTER_LOCK_SECONDS)
+            return
+        if action == Action.POINTER_OFF:
+            self._end_pointer_lock()
+            return
+        if self._pointer_locked():
+            if not self.standby:
+                self.overlay.show_pointer_hint(duration=self._POINTER_LOCK_SECONDS)
             return
         if action == Action.SHUFFLE and not self.standby:
             self._shuffle_button()
@@ -392,9 +424,12 @@ class TVApp:
             self._handle_menu_event(event)
             return
 
-        if self.paused and action == Action.ENTER and not self._digit_buffer:
-            # OK carries on, like the play button.
+        if action == Action.ENTER and not self._digit_buffer:
+            # OK pauses and carries on, like the play button.
             self._toggle_pause()
+            return
+        if action in (Action.LEFT, Action.RIGHT):
+            # Left and right only work in the menu.
             return
 
         handlers = {
@@ -464,7 +499,11 @@ class TVApp:
                 self.close_menu()
                 self._play_choice(choice)
                 return
-        elif action in (Action.BACK, Action.LAST_CHANNEL):
+        elif action == Action.RIGHT:
+            # Right goes into the yellow one, like OK.
+            self._handle_menu_event(InputEvent(Action.ENTER))
+            return
+        elif action in (Action.BACK, Action.LAST_CHANNEL, Action.LEFT):
             self.menu.back()
         elif action == Action.MENU:
             self.close_menu()
@@ -616,8 +655,8 @@ class TVApp:
 
     def _handle_sound_sync_event(self, action: Action) -> None:
         self._sound_sync_deadline = self._clock() + self._SYNC_IDLE_SECONDS
-        later = (Action.VOLUME_UP, Action.FAST_FORWARD, Action.CHANNEL_UP)
-        earlier = (Action.VOLUME_DOWN, Action.REWIND, Action.CHANNEL_DOWN)
+        later = (Action.VOLUME_UP, Action.FAST_FORWARD, Action.CHANNEL_UP, Action.RIGHT)
+        earlier = (Action.VOLUME_DOWN, Action.REWIND, Action.CHANNEL_DOWN, Action.LEFT)
         if action in later or action in earlier:
             step = self._SYNC_STEP_MS if action in later else -self._SYNC_STEP_MS
             limit = self._SYNC_LIMIT_MS
@@ -803,6 +842,7 @@ class TVApp:
                 start=request.start,
                 static_seconds=self.config.transition_duration,
             )
+            self._new_episode_volume(request.path)
             self._apply_output_volume()
         elif self.config.bridge_seconds > 0 and self._playing_path is not None:
             # No transition effect: keep the current show playing while the next
@@ -823,7 +863,17 @@ class TVApp:
         self._playing_path = request.path
         self._arm_stall(request.path)
         self.player.play(request.path, start=request.start)
+        self._new_episode_volume(request.path)
         self._apply_output_volume()
+
+    def _new_episode_volume(self, path: Optional[Path]) -> None:
+        """Every new episode starts at the usual level (initial_volume).
+        Carrying on with the same episode (waking up) keeps the level."""
+        if path is None or path == self._volume_path:
+            return
+        self._volume_path = path
+        if self.config.volume_reset_each_episode:
+            self.volume = self.config.initial_volume
 
     def _show_no_signal(self, channel: Channel) -> None:
         self._clear_pause()
@@ -970,14 +1020,20 @@ class TVApp:
             self.overlay.clear_pause()
             self._arm_stall(self._playing_path)
 
-    def _show_pause_card(self) -> None:
+    def _show_pause_card(self, position: Optional[float] = None) -> None:
+        if position is None:
+            position = self.player.get_time_pos()
+        duration = self.player.get_duration()
+        if duration is not None and position is not None:
+            position = max(0.0, min(position, duration))
+        when = {"position": position, "duration": duration}
         info = self._episode_info.get(self._playing_path) if self._playing_path else None
         if info is None:
             name = self._playing_path.stem if self._playing_path else ""
-            self.overlay.show_paused(name, "", "")
+            self.overlay.show_paused(name, "", "", **when)
             return
         show, episode = info
-        self.overlay.show_paused(show.name, episode.code, episode.name or episode.title)
+        self.overlay.show_paused(show.name, episode.code, episode.name or episode.title, **when)
 
     def _clear_pause(self) -> None:
         """A new episode (or standby) always starts unpaused."""
@@ -994,9 +1050,14 @@ class TVApp:
     def _skip(self, seconds: float, arrows: str) -> None:
         if self._playing_path is None or self._switch_deadline is not None or seconds == 0:
             return
+        before = self.player.get_time_pos()
         self.player.seek_relative(seconds)
         if self._stall.path is not None:
             self._stall.note_seek(self._clock())
+        if self.paused and not self.menu.is_open:
+            # Paused: move the marker on the timeline instead of a message.
+            self._show_pause_card((before or 0.0) + seconds)
+            return
         self.overlay.show_message(f"{arrows}  {abs(seconds):g} seconds", duration=1.5)
 
     # -- info / standby -----------------------------------------------------

@@ -120,6 +120,10 @@ class Player(ABC):
     def get_time_pos(self) -> Optional[float]:
         """Current playback position in seconds, or None if nothing is playing."""
 
+    def get_duration(self) -> Optional[float]:
+        """Length of the episode in seconds, or None if not known."""
+        return None
+
     @abstractmethod
     def show_text(self, text: str, duration: float) -> None:
         """Show a plain OSD message for ``duration`` seconds."""
@@ -455,6 +459,13 @@ class MpvPlayer(Player):
         except Exception:  # noqa: BLE001
             return None
 
+    def get_duration(self) -> Optional[float]:
+        try:
+            length = self._mpv.duration
+            return float(length) if length is not None else None
+        except Exception:  # noqa: BLE001
+            return None
+
     # -- OSD ----------------------------------------------------------------
     def show_text(self, text: str, duration: float) -> None:
         try:
@@ -517,6 +528,7 @@ class MockPlayer(Player):
         self.ended = False
         self.fail_sample = False
         self.closed = False
+        self.duration: Optional[float] = None
         self.fail_seek = False
         self.picture: Optional[str] = None
         self.audio_pos: Optional[float] = None
@@ -635,6 +647,9 @@ class MockPlayer(Player):
 
     def get_time_pos(self) -> Optional[float]:
         return self.time_pos if self.current is not None else None
+
+    def get_duration(self) -> Optional[float]:
+        return self.duration if self.current is not None else None
 
     def show_text(self, text: str, duration: float) -> None:
         self.messages.append((text, duration))

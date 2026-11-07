@@ -31,15 +31,17 @@ _EVDEV_ACTIONS: Dict[str, InputEvent] = {
     "KEY_DOWN": InputEvent(Action.CHANNEL_DOWN),
     # Volume.
     "KEY_VOLUMEUP": InputEvent(Action.VOLUME_UP),
-    "KEY_RIGHT": InputEvent(Action.VOLUME_UP),
     "KEY_EQUAL": InputEvent(Action.VOLUME_UP),
     "KEY_KPPLUS": InputEvent(Action.VOLUME_UP),
     "KEY_VOLUMEDOWN": InputEvent(Action.VOLUME_DOWN),
-    "KEY_LEFT": InputEvent(Action.VOLUME_DOWN),
     "KEY_MINUS": InputEvent(Action.VOLUME_DOWN),
     "KEY_KPMINUS": InputEvent(Action.VOLUME_DOWN),
     "KEY_MUTE": InputEvent(Action.MUTE),
     "KEY_M": InputEvent(Action.MUTE),
+    # Left and right only work in the menu (back a step / choose), so a
+    # stray press while watching changes nothing.
+    "KEY_LEFT": InputEvent(Action.LEFT),
+    "KEY_RIGHT": InputEvent(Action.RIGHT),
     # Select / confirm a typed channel number.
     "KEY_ENTER": InputEvent(Action.ENTER),
     "KEY_KPENTER": InputEvent(Action.ENTER),
@@ -263,9 +265,9 @@ _CEC_ACTIONS: Dict[str, InputEvent] = {
     "channel up": InputEvent(Action.CHANNEL_UP),
     "down": InputEvent(Action.CHANNEL_DOWN),
     "channel down": InputEvent(Action.CHANNEL_DOWN),
-    "right": InputEvent(Action.VOLUME_UP),
+    "right": InputEvent(Action.RIGHT),
     "volume up": InputEvent(Action.VOLUME_UP),
-    "left": InputEvent(Action.VOLUME_DOWN),
+    "left": InputEvent(Action.LEFT),
     "volume down": InputEvent(Action.VOLUME_DOWN),
     "mute": InputEvent(Action.MUTE),
     "select": InputEvent(Action.ENTER),

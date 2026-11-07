@@ -165,18 +165,19 @@ class Config:
     hwdec: str = "auto-safe"
 
     # Audio.
-    # 100 keeps the Pi at unity so the TV's own volume is the real knob.
-    # A saved config.yaml that still says 70 keeps 70 until that line is edited.
-    initial_volume: int = 100             # 0-100
-    volume_step: int = 5
-    # auto: HDMI-CEC to the TV when cec-client is available, else the Pi.
-    # tv:   ask for the TV, fall back to the Pi when CEC is missing.
-    # pi:   the remote always changes NostalgiaBox's software volume.
-    volume_control: str = "auto"
+    # The box's own sound level. Every new episode starts back at this level,
+    # so one loud click never carries on into the next show.
+    initial_volume: int = 80              # 0-100
+    volume_step: int = 10
+    volume_reset_each_episode: bool = True
+    # pi:   the remote changes the box's own sound (the default).
+    # auto: HDMI-CEC to the TV when cec-client finds one, else the box.
+    # tv:   ask for the TV, fall back to the box when CEC is missing.
+    volume_control: str = "pi"
     audio_device: Optional[str] = None    # mpv audio device (e.g. HDMI); None = auto
     # Press volume-down once more when already at 0 to cleanly power off the Pi
     # (so it's safe to unplug). The command run to shut down:
-    power_off_on_min_volume: bool = True
+    power_off_on_min_volume: bool = False
     power_off_command: tuple[str, ...] = ("sudo", "poweroff")
 
     # Playback.
@@ -518,9 +519,9 @@ def config_from_dict(data: Dict[str, Any], *, base_dir: Optional[Path] = None) -
     if start_mode not in START_MODES:
         raise ConfigError(f"'start_mode' must be one of {START_MODES}, got '{start_mode}'")
 
-    initial_volume = _clamp_int(data.get("initial_volume", 100), 0, 100, "initial_volume")
-    volume_step = _clamp_int(data.get("volume_step", 5), 1, 100, "volume_step")
-    volume_control = str(data.get("volume_control", "auto")).strip().lower()
+    initial_volume = _clamp_int(data.get("initial_volume", 80), 0, 100, "initial_volume")
+    volume_step = _clamp_int(data.get("volume_step", 10), 1, 100, "volume_step")
+    volume_control = str(data.get("volume_control", "pi")).strip().lower()
     if volume_control not in VOLUME_CONTROLS:
         raise ConfigError(
             f"'volume_control' must be one of {VOLUME_CONTROLS}, got '{volume_control}'"
@@ -564,7 +565,8 @@ def config_from_dict(data: Dict[str, Any], *, base_dir: Optional[Path] = None) -
         volume_step=volume_step,
         volume_control=volume_control,
         audio_device=audio_device,
-        power_off_on_min_volume=bool(data.get("power_off_on_min_volume", True)),
+        power_off_on_min_volume=bool(data.get("power_off_on_min_volume", False)),
+        volume_reset_each_episode=bool(data.get("volume_reset_each_episode", True)),
         power_off_command=power_off_command,
         scan_recursive=bool(data.get("scan_recursive", True)),
         shuffle_seed=(int(data["shuffle_seed"]) if data.get("shuffle_seed") is not None else None),
